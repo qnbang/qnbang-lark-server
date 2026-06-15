@@ -1,0 +1,32 @@
+# ===== 비밀 파일 (절대 깃에 올리지 않음) =====
+config.json
+google-key.json
+토큰캐시.json
+*-key.json
+**/*-key.json
+credentials*.json
+*.pem
+*.key
+.env
+
+# ===== 가상환경 / 캐시 =====
+venv/
+**/venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# ===== 로그 / 실행상태 (백업 불필요) =====
+*로그.txt
+브리핑_보낸날짜.txt
+서버감시_상태.json
+처리한_글.json
+
+# ===== OS 잡파일 =====
+.DS_Store
+
+# ===== 백업본/로그 (비밀 포함 가능, 제외) =====
+*.bak
+*.bak-*
+config.json.bak*
+*.log

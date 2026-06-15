@@ -1,0 +1,1376 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>업무 관리</title>
+<link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #EFEFEF;
+  --sidebar: #E4E3DF;
+  --surface: #FFFFFF;
+  --border: #D0CFCC;
+  --text: #1C1C1E;
+  --text2: #68686E;
+  --text3: #AEAEB4;
+  --blue: #007AFF;
+  --orange: #FF9500;
+  --green: #34C759;
+  --red: #FF3B30;
+  --r: 12px;
+  --rs: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1C1C1E; --sidebar: #252524; --surface: #2C2C2E;
+    --border: #3A3A3C; --text: #F2F2F7; --text2: #8E8E93; --text3: #48484A;
+  }
+}
+
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  background: var(--bg); color: var(--text);
+  -webkit-font-smoothing: antialiased; font-size: 13px;
+}
+
+.shell { display: flex; height: 100vh; }
+
+/* Sidebar */
+.sidebar {
+  width: 220px; flex-shrink: 0; background: var(--sidebar);
+  display: flex; flex-direction: column; padding: 14px 10px;
+  gap: 2px; overflow-y: auto; user-select: none;
+}
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 14px; }
+.tile {
+  background: var(--surface); border-radius: var(--r);
+  padding: 10px 11px 9px; cursor: pointer; transition: filter .12s;
+}
+.tile:hover { filter: brightness(.97); }
+.tile.active { outline: 2.5px solid var(--blue); outline-offset: -2.5px; }
+.tile-icon { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 7px; }
+.tile-icon svg { width: 14px; height: 14px; }
+.tile-count { font-size: 22px; font-weight: 700; line-height: 1; color: var(--text); }
+.tile-label { font-size: 11px; font-weight: 500; color: var(--text2); margin-top: 2px; }
+
+.section-label { font-size: 11px; font-weight: 600; color: var(--text3); letter-spacing: .05em; text-transform: uppercase; padding: 8px 6px 4px; }
+.nav-row { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: var(--rs); cursor: pointer; transition: background .1s; }
+.nav-row:hover { background: rgba(0,0,0,.06); }
+.nav-row.active { background: rgba(0,122,255,.14); }
+@media (prefers-color-scheme: dark) { .nav-row:hover { background: rgba(255,255,255,.07); } .nav-row.active { background: rgba(0,122,255,.22); } }
+.nav-icon { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.nav-icon svg { width: 13px; height: 13px; }
+.nav-name { flex: 1; font-size: 13px; color: var(--text); }
+.nav-cnt { font-size: 13px; color: var(--text2); }
+
+/* Main */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--surface); position: relative; }
+
+.topbar { display: flex; align-items: center; padding: 10px 14px 0; gap: 8px; flex-shrink: 0; }
+/* 왼쪽 목록(사이드바) 접기 버튼 */
+.sb-toggle { background: rgba(0,0,0,.06); border: none; border-radius: var(--rs); width: 30px; height: 28px; font-size: 15px; line-height: 1; cursor: pointer; color: var(--text2); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.sb-toggle:hover { background: rgba(0,0,0,.11); }
+@media (prefers-color-scheme: dark) { .sb-toggle { background: rgba(255,255,255,.09); } }
+/* 접힌 상태 — 왼쪽 사이드바 숨김 */
+.shell.no-sidebar .sidebar { display: none; }
+.search-wrap { position: relative; display: flex; align-items: center; }
+.search-wrap svg { position: absolute; left: 8px; width: 13px; height: 13px; stroke: var(--text3); fill: none; pointer-events: none; }
+.search-input { background: rgba(0,0,0,.06); border: none; border-radius: var(--rs); padding: 5px 10px 5px 26px; font-size: 13px; color: var(--text); width: 190px; outline: none; font-family: inherit; }
+@media (prefers-color-scheme: dark) { .search-input { background: rgba(255,255,255,.09); } }
+.search-input::placeholder { color: var(--text3); }
+
+.section-head { padding: 6px 18px 0; flex-shrink: 0; }
+.section-title { font-size: 33px; font-weight: 700; letter-spacing: -.6px; line-height: 1.15; }
+.section-sub { font-size: 12px; color: var(--text2); margin-top: 2px; }
+
+/* 담당자 탭 (전체 할 일 / 사람별) */
+.person-bar { display: flex; gap: 6px; padding: 10px 18px 2px; flex-shrink: 0; flex-wrap: wrap; }
+.person-tab { background: rgba(0,0,0,.05); border: 1px solid var(--border); border-radius: 999px; padding: 5px 14px; font-size: 13px; font-weight: 600; color: var(--text2); cursor: pointer; font-family: inherit; transition: background .1s, color .1s; }
+.person-tab:hover { background: rgba(0,0,0,.09); }
+.person-tab.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+@media (prefers-color-scheme: dark) { .person-tab { background: rgba(255,255,255,.07); } .person-tab:hover { background: rgba(255,255,255,.12); } }
+
+/* ── Always-visible inline quick-add ── */
+.quick-add-wrap { border-bottom: 2px solid var(--border); flex-shrink: 0; }
+
+.quick-add-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 18px 9px;
+}
+.qa-circle {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid var(--border); flex-shrink: 0;
+}
+.qa-input {
+  flex: 1; border: none; background: none;
+  font-size: 14px; color: var(--text);
+  font-family: inherit; outline: none;
+  min-width: 0; width: 100%;
+}
+.qa-input::placeholder { color: var(--text3); font-size: 13px; }
+.qa-hint { font-size: 11px; color: var(--text3); white-space: nowrap; }
+
+/* expanded options */
+.quick-add-opts {
+  display: none;
+  padding: 0 18px 10px 50px;
+  gap: 7px; flex-wrap: wrap; align-items: center;
+}
+.quick-add-opts.show { display: flex; }
+
+.qa-parsed-preview {
+  display: flex; align-items: center; gap: 5px; flex-wrap: wrap; flex: 1;
+}
+
+.qa-pill {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 11px; font-weight: 500;
+  padding: 2px 8px; border-radius: 5px;
+}
+.qa-pill.p-date { background: rgba(88,86,214,.1); color: #5856D6; }
+.qa-pill.p-time { background: rgba(255,149,0,.12); color: #B45309; }
+.qa-pill.p-client { background: rgba(0,122,255,.1); color: var(--blue); }
+@media (prefers-color-scheme: dark) {
+  .qa-pill.p-date { color: #9B99F5; }
+  .qa-pill.p-time { color: #FFBB55; }
+}
+
+.qa-opt-input, .qa-opt-select {
+  background: rgba(0,0,0,.05); border: 1px solid var(--border);
+  border-radius: 7px; padding: 4px 9px;
+  font-size: 12px; color: var(--text); font-family: inherit; outline: none;
+}
+@media (prefers-color-scheme: dark) { .qa-opt-input, .qa-opt-select { background: rgba(255,255,255,.07); } }
+.qa-opt-input:focus, .qa-opt-select:focus { border-color: var(--blue); }
+.qa-opt-input::placeholder { color: var(--text3); }
+.qa-opt-select { appearance: none; padding-right: 22px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 6px center; }
+
+.qa-urgent-btn {
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px 9px; border-radius: 7px;
+  border: 1px solid var(--border); background: none; color: var(--text2);
+  font-size: 12px; cursor: pointer; font-family: inherit;
+}
+.qa-urgent-btn:hover { background: rgba(255,59,48,.07); }
+.qa-urgent-btn.on { background: rgba(255,59,48,.1); color: var(--red); border-color: rgba(255,59,48,.2); }
+
+.qa-actions { display: flex; gap: 6px; margin-left: auto; }
+.qa-cancel { background: none; border: 1px solid var(--border); border-radius: 7px; padding: 4px 12px; font-size: 12px; color: var(--text2); cursor: pointer; font-family: inherit; }
+.qa-cancel:hover { background: rgba(0,0,0,.04); }
+.qa-submit { background: var(--blue); color: white; border: none; border-radius: 7px; padding: 4px 13px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.qa-submit:hover { opacity: .88; }
+
+/* Task list */
+.task-list { flex: 1; overflow-y: auto; padding: 0 10px 60px; }
+.task-list::-webkit-scrollbar { width: 5px; }
+.task-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.group-label { font-size: 12px; font-weight: 600; color: var(--text2); padding: 12px 8px 3px; }
+
+.task-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 7px 8px; border-bottom: 1px solid var(--border);
+  cursor: pointer; transition: background .08s;
+  animation: rowIn .16s ease;
+}
+@keyframes rowIn { from { opacity:0; transform: translateY(3px); } to { opacity:1; transform:none; } }
+.task-row:hover { background: rgba(0,0,0,.025); }
+@media (prefers-color-scheme: dark) { .task-row:hover { background: rgba(255,255,255,.04); } }
+.task-row:last-child { border-bottom: none; }
+
+.circle {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid var(--text3); flex-shrink: 0; margin-top: 1px;
+  cursor: pointer; background: none;
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color .12s, background .12s; position: relative;
+}
+.circle:hover { border-color: var(--blue); }
+.circle.c-wait { border-color: var(--orange); }
+.circle.c-wait::after { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--orange); position: absolute; }
+.circle.c-done { background: var(--green); border-color: var(--green); }
+.circle.c-done::after { display: none; }
+.circle.c-done svg { display: block; }
+.circle svg { display: none; width: 11px; height: 11px; fill: none; stroke: white; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* 피드백 대기용 동그라미(추가된 두 번째 체크) */
+.circle.wait-circle { border-color: var(--text3); margin-left: -3px; }
+.circle.wait-circle:hover { border-color: var(--orange); }
+.circle.wait-circle svg { display: block; stroke: var(--orange); }
+.circle.wait-circle.c-wait { background: var(--orange); border-color: var(--orange); }
+.circle.wait-circle.c-wait svg { stroke: white; }
+.circle.wait-circle.c-wait::after { display: none; }
+
+.task-body { flex: 1; min-width: 0; }
+.task-title { font-size: 14px; color: var(--text); line-height: 1.4; word-break: break-word; }
+.task-title.struck { text-decoration: line-through; color: var(--text3); }
+
+.task-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.tag { font-size: 11px; font-weight: 500; padding: 1px 7px; border-radius: 5px; display: inline-flex; align-items: center; gap: 3px; }
+.t-client { background: rgba(0,122,255,.1); color: var(--blue); }
+.t-time { background: rgba(255,149,0,.13); color: #B45309; }
+.t-time.od { background: rgba(255,59,48,.1); color: var(--red); }
+.t-wait { background: rgba(255,149,0,.13); color: #B45309; }
+.t-urgent { background: rgba(255,59,48,.1); color: var(--red); }
+.t-note { background: rgba(0,0,0,.06); color: var(--text2); }
+@media (prefers-color-scheme: dark) {
+  .t-client { background: rgba(0,122,255,.18); color: #7AB3FF; }
+  .t-time { background: rgba(255,149,0,.18); color: #FFBB55; }
+  .t-wait { background: rgba(255,149,0,.18); color: #FFBB55; }
+  .t-urgent { background: rgba(255,59,48,.18); color: #FF7066; }
+  .t-note { background: rgba(255,255,255,.08); color: var(--text2); }
+}
+
+/* Detail panel */
+.detail {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 290px;
+  background: var(--sidebar); border-left: 1px solid var(--border);
+  display: none; flex-direction: column;
+  padding: 18px 16px; gap: 13px; overflow-y: auto; z-index: 30;
+  animation: slideIn .18s ease;
+}
+@keyframes slideIn { from { transform: translateX(20px); opacity:0; } to { transform:none; opacity:1; } }
+.detail.open { display: flex; }
+
+.dp-top { display: flex; align-items: center; justify-content: space-between; }
+.dp-top-label { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: .04em; }
+.dp-close { background: none; border: none; color: var(--blue); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.dp-title { font-size: 17px; font-weight: 600; color: var(--text); background: none; border: none; border-bottom: 1px solid var(--border); padding-bottom: 9px; outline: none; font-family: inherit; width: 100%; }
+.dp-title:focus { border-color: var(--blue); }
+.dp-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.dp-field { display: flex; flex-direction: column; gap: 4px; }
+.dp-label { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: .04em; }
+.dp-inp, .dp-sel, .dp-ta { background: var(--surface); border: 1px solid var(--border); border-radius: var(--rs); padding: 7px 9px; font-size: 13px; color: var(--text); font-family: inherit; outline: none; width: 100%; }
+.dp-inp:focus, .dp-sel:focus, .dp-ta:focus { border-color: var(--blue); }
+.dp-ta { height: 70px; resize: vertical; }
+.dp-sel { appearance: none; }
+.dp-check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.dp-check input { accent-color: var(--red); width: 15px; height: 15px; cursor: pointer; }
+.dp-check span { font-size: 13px; color: var(--text); }
+.dp-btns { display: flex; gap: 8px; }
+.dp-save { flex: 1; background: var(--blue); color: white; border: none; border-radius: var(--rs); padding: 8px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.dp-save:hover { opacity: .88; }
+.dp-del { background: rgba(255,59,48,.1); color: var(--red); border: none; border-radius: var(--rs); padding: 8px 12px; font-size: 13px; cursor: pointer; font-family: inherit; }
+.dp-del:hover { background: rgba(255,59,48,.18); }
+.dp-ics { background: none; border: 1px solid var(--border); color: var(--text2); border-radius: var(--rs); padding: 7px; font-size: 12px; cursor: pointer; font-family: inherit; width: 100%; display: flex; align-items: center; justify-content: center; gap: 5px; }
+.dp-ics:hover { background: rgba(0,122,255,.07); color: var(--blue); border-color: rgba(0,122,255,.2); }
+
+.empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 200px; gap: 8px; color: var(--text3); }
+.empty svg { width: 36px; height: 36px; stroke: var(--text3); fill: none; opacity: .5; }
+.empty p { font-size: 14px; }
+
+/* ── 칸반 보드 (위아래로 쌓인 칸) ── */
+.kanban { flex: 1; overflow-y: auto; padding: 10px 12px 60px; display: flex; flex-direction: column; gap: 14px; }
+.kanban::-webkit-scrollbar { width: 5px; }
+.kanban::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.kanban-col { background: rgba(0,0,0,.025); border: 1.5px solid var(--border); border-radius: 14px; padding: 9px 9px 11px; transition: background .12s, border-color .12s; }
+@media (prefers-color-scheme: dark) { .kanban-col { background: rgba(255,255,255,.03); } }
+.kanban-col.drag-over { border-color: var(--blue); background: rgba(0,122,255,.07); }
+.col-head { display: flex; align-items: center; gap: 7px; padding: 3px 6px 9px; font-size: 13px; font-weight: 700; color: var(--text); }
+.col-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.col-count { color: var(--text3); font-weight: 500; margin-left: 2px; }
+.col-empty { color: var(--text3); font-size: 12px; padding: 8px 8px 4px; text-align: center; }
+/* 칸반 카드 */
+.kanban .task-row { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin: 7px 0 0; padding: 10px 12px; cursor: pointer; display: flex; align-items: flex-start; gap: 10px; }
+.kanban .task-row:active { cursor: grabbing; }
+.kanban .task-row.dragging { opacity: .35; }
+.kanban .task-row:hover { border-color: #b9c4ff; }
+/* 카드 안 ✎ 수정 버튼 */
+.card-edit { opacity: 0; border: none; background: none; color: var(--text3); font-size: 13px; cursor: pointer; padding: 2px 4px; flex-shrink: 0; align-self: center; transition: opacity .12s, color .12s; }
+.kanban .task-row:hover .card-edit { opacity: 1; }
+.card-edit:hover { color: var(--blue); }
+/* 카드 왼쪽 체크박스 — 누르면 다음 단계로 (시작전→진행중→대기→완료) */
+.card-check { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--text3); background: none; flex-shrink: 0; cursor: pointer; align-self: center; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; line-height: 1; padding: 0; transition: border-color .12s, background .12s; }
+.card-check:hover { border-color: var(--blue); }
+.card-check.cc-doing { border-color: var(--blue);   background: var(--blue); }
+.card-check.cc-wait  { border-color: var(--orange); background: var(--orange); }
+.card-check.cc-done  { border-color: var(--green);  background: var(--green); }
+
+/* ── 기간 토글(이번 주 / 전체 기간) — 미래 할일을 접어 화면을 가볍게 ── */
+.horizon-group { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.hz-chip { background: rgba(0,0,0,.05); border: 1px solid var(--border); border-radius: 999px; padding: 5px 13px; font-size: 12px; font-weight: 600; color: var(--text2); cursor: pointer; font-family: inherit; transition: background .1s, color .1s; }
+.hz-chip:hover { background: rgba(0,0,0,.09); }
+.hz-chip.active { background: var(--text); color: var(--surface); border-color: var(--text); }
+@media (prefers-color-scheme: dark) { .hz-chip { background: rgba(255,255,255,.07); } .hz-chip:hover { background: rgba(255,255,255,.12); } }
+
+/* 칸 안의 '나중(미래)' 접이 줄 */
+.later-toggle { width: 100%; text-align: left; background: none; border: none; border-top: 1px dashed var(--border); margin-top: 8px; padding: 9px 6px 3px; font-size: 12px; font-weight: 600; color: var(--text2); cursor: pointer; font-family: inherit; display: flex; align-items: center; gap: 6px; }
+.later-toggle:hover { color: var(--blue); }
+.later-toggle .lt-when { color: var(--text3); font-weight: 500; }
+
+/* ── 진행판 (프로젝트별 진행 카드) ── */
+/* 위쪽 뷰 전환 토글 (보드 / 진행판) */
+.view-switch { margin-left: auto; display: flex; gap: 0; background: rgba(0,0,0,.06); border-radius: 999px; padding: 3px; }
+@media (prefers-color-scheme: dark) { .view-switch { background: rgba(255,255,255,.09); } }
+.vs-btn { border: none; background: none; border-radius: 999px; padding: 5px 15px; font-size: 12px; font-weight: 600; color: var(--text2); cursor: pointer; font-family: inherit; transition: color .12s; }
+.vs-btn.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+
+/* 진행판 컨테이너 — 기본 숨김, '진행판' 뷰에서만 표시 */
+.progress-view { display: none; flex: 1; overflow-y: auto; padding: 6px 16px 60px; }
+.progress-view::-webkit-scrollbar { width: 5px; }
+.progress-view::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+body.view-progress .progress-view { display: block; }
+/* 진행판 뷰에서는 빠른추가·칸반·기간토글을 숨긴다(읽기 전용 화면) */
+/* #taskList 로 잡는 이유: 칸반이 그려지면 클래스가 task-list→kanban 으로 바뀌어 클래스 선택자가 안 먹음 */
+body.view-progress .quick-add-wrap, body.view-progress #taskList, body.view-progress .horizon-group { display: none !important; }
+
+.pv-head { display: flex; align-items: center; gap: 8px; padding: 8px 2px 12px; }
+.pv-filters { display: flex; gap: 6px; }
+.pv-chip { background: rgba(0,0,0,.05); border: 1px solid var(--border); border-radius: 999px; padding: 5px 14px; font-size: 12px; font-weight: 600; color: var(--text2); cursor: pointer; font-family: inherit; transition: background .1s, color .1s; }
+.pv-chip:hover { background: rgba(0,0,0,.09); }
+.pv-chip.active { background: var(--text); color: var(--surface); border-color: var(--text); }
+@media (prefers-color-scheme: dark) { .pv-chip { background: rgba(255,255,255,.07); } }
+
+/* 진행 카드 한 장 */
+.pcard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin-bottom: 9px; transition: border-color .12s; }
+.pcard:hover { border-color: #b9c4ff; }
+.pc-top { display: flex; align-items: center; gap: 8px; }
+.pc-sig { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+.sig-red .pc-sig    { background: var(--red); }
+.sig-yellow .pc-sig { background: var(--orange); }
+.sig-green .pc-sig  { background: var(--green); }
+.sig-white .pc-sig  { background: var(--surface); border: 1.5px solid var(--text3); }
+.sig-gray .pc-sig   { background: var(--text3); }
+.pc-name { font-size: 15px; font-weight: 700; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-dday { font-size: 13px; font-weight: 700; color: var(--text2); flex-shrink: 0; }
+.sig-red .pc-dday { color: var(--red); }
+.sig-gray .pc-dday { color: var(--text3); }
+.pc-mid { display: flex; align-items: center; gap: 8px; margin-top: 7px; flex-wrap: wrap; }
+.pc-stage { font-size: 12px; color: var(--text2); }
+/* 회신대기 할일이 있으면 상태글자를 주황 '피드백 대기'로 (모호소 스타일 — 할일 기준이라 일관됨) */
+.pc-stage.stage-wait { color: var(--orange); font-weight: 700; }
+.pc-gauge { font-size: 13px; letter-spacing: 1.5px; color: var(--blue); font-family: ui-monospace, monospace; }
+.pc-gauge .g-off { color: var(--border); }
+.pc-frac { font-size: 11px; color: var(--text3); }
+.pc-class { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 5px; margin-left: auto; }
+.cls-대행 { background: rgba(0,122,255,.1); color: var(--blue); }
+.cls-자체 { background: rgba(52,199,89,.13); color: #1a8c3a; }
+@media (prefers-color-scheme: dark) { .cls-대행 { background: rgba(0,122,255,.18); color: #7AB3FF; } .cls-자체 { background: rgba(52,199,89,.18); color: #5BD97A; } }
+.pc-pay { font-size: 11px; color: var(--text3); }
+.pc-next { font-size: 12px; color: var(--text2); margin-top: 7px; }
+.pc-next.none { color: var(--text3); }
+
+/* 카드 안 과업 목록 (안 한 일 → 한 일 순) */
+.pc-tasks { margin-top: 9px; display: flex; flex-direction: column; gap: 1px; }
+.pc-task { display: flex; align-items: baseline; gap: 7px; font-size: 12.5px; color: var(--text); padding: 2px 1px; cursor: pointer; border-radius: 5px; }
+.pc-task:hover { background: rgba(0,0,0,.03); }
+@media (prefers-color-scheme: dark) { .pc-task:hover { background: rgba(255,255,255,.05); } }
+.pc-task .tm { font-size: 12px; flex-shrink: 0; line-height: 1.4; font-weight: 700; }
+.tm-doing { color: var(--blue); }
+.tm-wait  { color: var(--orange); }
+.tm-todo  { color: var(--text3); }
+.tm-done  { color: var(--green); }
+.pt-title { min-width: 0; word-break: break-word; }
+.pc-task.done .pt-title { text-decoration: line-through; color: var(--text3); }
+.pc-task.more { color: var(--text3); font-size: 11.5px; cursor: default; padding-left: 20px; }
+.pc-task.more:hover { background: none; }
+/* '안 한 일'과 '한 일' 사이 구분선 */
+.pc-task-div { border-top: 1px dashed var(--border); margin: 5px 0 3px; }
+/* 카드 펼치기/접기 줄 */
+.pcard { cursor: pointer; }
+.pc-toggle { font-size: 11.5px; font-weight: 600; color: var(--text2); margin-top: 8px; }
+.pcard:hover .pc-toggle { color: var(--blue); }
+.pc-noactive { font-size: 12px; color: var(--text3); margin-top: 8px; }
+
+/* 접이 줄(완료·중단 / 미연결) */
+.pv-collapse-btn { width: 100%; text-align: left; background: none; border: none; border-top: 1px dashed var(--border); margin-top: 12px; padding: 11px 4px 4px; font-size: 12px; font-weight: 600; color: var(--text2); cursor: pointer; font-family: inherit; }
+.pv-collapse-btn:hover { color: var(--blue); }
+
+/* 프로젝트 미연결 묶음 */
+.unlinked-group { padding: 4px; }
+.ug-line { display: flex; align-items: center; gap: 8px; padding: 7px 8px 2px; }
+.ug-client { font-size: 13px; font-weight: 600; color: var(--text); }
+.ug-cnt { font-size: 12px; color: var(--text3); }
+.ug-tasks { padding: 0 8px 8px 16px; }
+.ug-task { font-size: 12px; color: var(--text2); padding: 3px 0; }
+.ug-task .ut-done { text-decoration: line-through; color: var(--text3); }
+.pv-empty { color: var(--text3); font-size: 13px; text-align: center; padding: 36px; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="tiles">
+      <div class="tile active" data-f="all" onclick="setFilter('all',this)">
+        <div class="tile-icon" style="background:#007AFF">
+          <svg viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="1.8" rx=".9" fill="white"/><rect x="1" y="7.1" width="14" height="1.8" rx=".9" fill="white"/><rect x="1" y="11.2" width="14" height="1.8" rx=".9" fill="white"/></svg>
+        </div>
+        <div class="tile-count" id="cnt-all">0</div>
+        <div class="tile-label">전체</div>
+      </div>
+      <div class="tile" data-f="todo" onclick="setFilter('todo',this)">
+        <div class="tile-icon" style="background:#8E8E93">
+          <svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.5" stroke="white" stroke-width="1.6"/></svg>
+        </div>
+        <div class="tile-count" id="cnt-todo">0</div>
+        <div class="tile-label">시작 전</div>
+      </div>
+      <div class="tile" data-f="doing" onclick="setFilter('doing',this)">
+        <div class="tile-icon" style="background:#5856D6">
+          <svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.5" stroke="white" stroke-width="1.6"/><path d="M8 8 L8 4.5" stroke="white" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </div>
+        <div class="tile-count" id="cnt-doing">0</div>
+        <div class="tile-label">진행 중</div>
+      </div>
+      <div class="tile" data-f="wait" onclick="setFilter('wait',this)">
+        <div class="tile-icon" style="background:#FF9500">
+          <svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.5" stroke="white" stroke-width="1.6"/><path d="M8 5.5V8.5L10 10" stroke="white" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </div>
+        <div class="tile-count" id="cnt-wait">0</div>
+        <div class="tile-label">피드백 대기</div>
+      </div>
+    </div>
+    <div class="section-label">프로젝트</div>
+    <div class="nav-row" id="nav-progress" onclick="setView('progress')">
+      <div class="nav-icon" style="background:#AF52DE">
+        <svg viewBox="0 0 14 14" fill="none"><rect x="1" y="6" width="3.2" height="6.5" rx="1" fill="white"/><rect x="5.4" y="3" width="3.2" height="9.5" rx="1" fill="white"/><rect x="9.8" y="1" width="3.2" height="11.5" rx="1" fill="white"/></svg>
+      </div>
+      <span class="nav-name">프로젝트 진행판</span>
+    </div>
+    <div class="section-label">나의 목록</div>
+    <div class="nav-row" data-f="done" onclick="setFilter('done',this)">
+      <div class="nav-icon" style="background:#34C759">
+        <svg viewBox="0 0 14 14" fill="none"><path d="M2.5 7l3 3 6-6" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <span class="nav-name">완료됨</span>
+      <span class="nav-cnt" id="cnt-done">0</span>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="topbar">
+      <button class="sb-toggle" onclick="toggleSidebar()" title="왼쪽 목록 접기/펼치기">☰</button>
+      <div class="search-wrap">
+        <svg viewBox="0 0 20 20" stroke-width="2.2" stroke-linecap="round"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M15 15l-3-3"/></svg>
+        <input class="search-input" placeholder="검색" id="searchQ" oninput="renderList()">
+      </div>
+    </div>
+
+    <div class="section-head">
+      <div class="section-title" id="secTitle" style="color:#007AFF">전체</div>
+    </div>
+
+    <!-- 담당자 탭 -->
+    <div class="person-bar" id="personBar">
+      <button class="person-tab active" data-p="all" onclick="setPerson('all',this)">전체 할 일</button>
+      <button class="person-tab" data-p="신종호" onclick="setPerson('신종호',this)">신종호</button>
+      <button class="person-tab" data-p="김지영" onclick="setPerson('김지영',this)">김지영</button>
+      <div class="horizon-group">
+        <button class="hz-chip active" data-h="week" onclick="setHorizon('week',this)" title="이번 주까지의 할 일만 보이고, 그 뒤 일정은 접어둡니다">이번 주</button>
+        <button class="hz-chip" data-h="all" onclick="setHorizon('all',this)" title="미래 일정까지 모두 펼쳐 봅니다">전체 기간</button>
+      </div>
+    </div>
+
+    <!-- Always-visible quick add -->
+    <div class="quick-add-wrap">
+      <div class="quick-add-row">
+        <div class="qa-circle"></div>
+        <input class="qa-input" id="qa-input"
+          placeholder="새 업무 — '내일 오후 3시 @클라이언트 업무명' 후 Enter"
+          autocomplete="off"
+          oninput="onQaInput()"
+          onfocus="showQaOpts()"
+        >
+      </div>
+      <div class="quick-add-opts" id="qaOpts">
+        <div class="qa-parsed-preview" id="qaParsed"></div>
+        <input class="qa-opt-input" id="qa-client" placeholder="클라이언트" style="width:110px">
+        <input class="qa-opt-input" id="qa-date" type="date" style="width:130px">
+        <input class="qa-opt-input" id="qa-time" type="time" style="width:100px">
+        <select class="qa-opt-select" id="qa-status" style="width:100px">
+          <option value="todo">시작 전</option>
+          <option value="doing">진행 중</option>
+          <option value="wait">피드백 대기</option>
+        </select>
+        <button class="qa-urgent-btn" id="qa-urg" onclick="togQaUrgent()">🔴 긴급</button>
+        <div class="qa-actions">
+          <button class="qa-cancel" onclick="resetQa()">취소</button>
+          <button class="qa-submit" onclick="submitQa()">추가</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="task-list" id="taskList"></div>
+
+    <!-- 진행판 (프로젝트별 진행 카드) -->
+    <div class="progress-view" id="progressView">
+      <div class="pv-head">
+        <div class="pv-filters">
+          <button class="pv-chip active" data-c="all" onclick="setPClass('all',this)">전체</button>
+          <button class="pv-chip" data-c="대행" onclick="setPClass('대행',this)">대행</button>
+          <button class="pv-chip" data-c="자체" onclick="setPClass('자체',this)">자체</button>
+        </div>
+      </div>
+      <div class="pv-list" id="pvList"></div>
+    </div>
+
+    <!-- Detail panel -->
+    <div class="detail" id="detail">
+      <div class="dp-top">
+        <span class="dp-top-label">업무 정보</span>
+        <button class="dp-close" onclick="closeDetail()">완료</button>
+      </div>
+      <input class="dp-title" id="dp-title" placeholder="업무명">
+      <div class="dp-field">
+        <div class="dp-label">담당자</div>
+        <select class="dp-sel" id="dp-owner">
+          <option value="신종호">신종호</option>
+          <option value="김지영">김지영</option>
+        </select>
+      </div>
+      <div class="dp-row2">
+        <div class="dp-field">
+          <div class="dp-label">클라이언트</div>
+          <input class="dp-inp" id="dp-client" placeholder="클라이언트명">
+        </div>
+        <div class="dp-field">
+          <div class="dp-label">상태</div>
+          <select class="dp-sel" id="dp-status">
+            <option value="todo">시작 전</option>
+            <option value="doing">진행 중</option>
+            <option value="wait">피드백 대기</option>
+            <option value="done">완료</option>
+          </select>
+        </div>
+      </div>
+      <div class="dp-row2">
+        <div class="dp-field">
+          <div class="dp-label">날짜</div>
+          <input class="dp-inp" id="dp-date" type="date">
+        </div>
+        <div class="dp-field">
+          <div class="dp-label">시간</div>
+          <input class="dp-inp" id="dp-time" type="time">
+        </div>
+      </div>
+      <div class="dp-field">
+        <div class="dp-label">메모</div>
+        <textarea class="dp-ta" id="dp-note" placeholder="메모"></textarea>
+      </div>
+      <label class="dp-check">
+        <input type="checkbox" id="dp-urgent">
+        <span>긴급 표시</span>
+      </label>
+      <button class="dp-ics" onclick="exportIcs()">📅 애플 캘린더로 내보내기 (.ics)</button>
+      <div class="dp-btns">
+        <button class="dp-save" onclick="saveDetail()">저장</button>
+        <button class="dp-del" onclick="delDetail()">삭제</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──
+// 데이터는 같은 폴더의 tasks.json 파일에 저장돼요.
+// 그래서 이 화면과 Claude(채팅)가 같은 파일을 보고, 양쪽 변경이 함께 반영됩니다.
+let tasks = [];
+let filter = 'all';
+let person = 'all';            // 담당자 탭: 'all' | '신종호' | '김지영'
+let horizon = 'week';          // 기간 보기: 'week'(이번 주까지) | 'all'(전체)
+let laterOpen = {};            // 칸별로 '나중' 묶음을 펼쳤는지 {todo:true,...}
+let qaUrgent = false;
+let detailId = null;
+
+// 담당자 목록 / 기본값. 담당자 칸이 없는 기존 할 일은 신종호 것으로 본다.
+const OWNERS = ['신종호', '김지영'];
+const DEFAULT_OWNER = '신종호';
+function ownerOf(t) { return t.담당자 || DEFAULT_OWNER; }
+// 지금 탭에 해당하는 할 일들 (전체면 전부)
+function personPool() {
+  return (person === 'all') ? tasks : tasks.filter(t => ownerOf(t) === person);
+}
+
+// 서버에서 할 일 목록을 불러옵니다.
+async function loadTasks() {
+  try {
+    const res = await fetch('/api/tasks', { cache: 'no-store' });
+    tasks = await res.json();
+    if (!Array.isArray(tasks)) tasks = [];
+  } catch (e) {
+    // 잠깐 끊겨도 기존 목록을 지우지 않습니다(깜빡임/빈 화면 방지). 다음 갱신에 다시 받아옵니다.
+    console.error('불러오기 실패(기존 목록 유지)', e);
+  }
+}
+
+// 변경된 목록을 tasks.json 파일에 저장합니다.
+let _saveTimer = null;
+function persist() {
+  // 화면은 바로 반응하고, 저장은 살짝 묶어서(0.2초) 파일에 씁니다.
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => {
+    fetch('/api/tasks', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(tasks, null, 2)
+    }).catch(e => console.error('저장 실패', e));
+  }, 200);
+}
+
+// ── Helpers ──
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+function pad(n) { return String(n).padStart(2,'0'); }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function isOverdue(t) {
+  if (!t.date || t.status === 'done') return false;
+  if (t.time) return new Date(t.date+'T'+t.time) < new Date();
+  return t.date < todayStr();
+}
+function formatDateTime(t) {
+  if (!t.date && !t.time) return '';
+  const parts = [];
+  if (t.date) { const d = new Date(t.date+'T12:00:00'); parts.push(`${d.getMonth()+1}/${d.getDate()}`); }
+  if (t.time) parts.push(t.time);
+  return parts.join(' ');
+}
+
+// '이번 주' 경계 = 오늘부터 7일 뒤 날짜(yyyy-mm-dd). 이보다 뒤 날짜의 할 일은 '나중'으로 접는다.
+function weekEndStr() {
+  const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()+7);
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+// '나중' 판정: 기간이 '이번 주'이고, 날짜가 경계보다 뒤면 미래 할 일(접기 대상).
+// 날짜 없는 할 일과 지난(밀린) 할 일은 항상 보인다.
+function isLater(t, we) { return !!t.date && t.date > we; }
+// 카드 한 장의 HTML (지금/나중 공통으로 씀)
+function cardHtml(t, colKey) {
+  const over = isOverdue(t);
+  let tags = '';
+  if (t.client) tags += `<span class="tag t-client">${esc(t.client)}</span>`;
+  const dt = formatDateTime(t);
+  if (dt) tags += `<span class="tag t-time${over?' od':''}">${dt}</span>`;
+  if (t.urgent) tags += `<span class="tag t-urgent">긴급</span>`;
+  if (t.note) tags += `<span class="tag t-note">${esc(t.note.slice(0,22))}${t.note.length>22?'…':''}</span>`;
+  return `<div class="task-row" draggable="true"
+      ondragstart="onCardDragStart(event,'${t.id}')" ondragend="onCardDragEnd(event)"
+      onclick="openDetail('${t.id}')" title="누르면 자세히 / 수정">
+    <button class="card-check cc-${colKey}" onclick="event.stopPropagation(); advanceStatus('${t.id}')" title="누르면 다음 단계로 (시작 전→진행 중→피드백 대기→완료)">${colKey==='done'?'✓':''}</button>
+    <div class="task-body">
+      <div class="task-title${colKey==='done'?' struck':''}">${esc(t.title)}</div>
+      ${tags ? `<div class="task-tags">${tags}</div>` : ''}
+    </div>
+    <button class="card-edit" onclick="event.stopPropagation(); openDetail('${t.id}')" title="자세히 / 수정">✎</button>
+  </div>`;
+}
+
+// ── Natural language parser ──
+// Parses: "오후 3시", "3시 30분", "15:30", "내일", "오늘", "월요일", "클라이언트명" after known keywords
+function parseNL(raw) {
+  let text = raw;
+  let date = '', time = '', client = '';
+
+  // ── Time patterns ──
+  // "오전/오후 N시 [M분]"
+  text = text.replace(/([오전오후]{2})\s?(\d{1,2})시\s?(?:(\d{1,2})분)?/g, (_, ampm, h, m) => {
+    let hh = parseInt(h);
+    if (ampm === '오후' && hh < 12) hh += 12;
+    if (ampm === '오전' && hh === 12) hh = 0;
+    time = `${pad(hh)}:${pad(parseInt(m||0))}`;
+    return '';
+  });
+  // "N시 [M분]" without 오전/오후
+  text = text.replace(/(\d{1,2})시\s?(?:(\d{1,2})분)?/g, (_, h, m) => {
+    let hh = parseInt(h);
+    // assume pm if 1~9
+    if (hh >= 1 && hh <= 9) hh += 12;
+    time = `${pad(hh)}:${pad(parseInt(m||0))}`;
+    return '';
+  });
+  // "HH:MM" or "H:MM"
+  text = text.replace(/\b(\d{1,2}):(\d{2})\b/g, (_, h, m) => {
+    time = `${pad(parseInt(h))}:${m}`;
+    return '';
+  });
+
+  // ── Date patterns ──
+  const today = new Date();
+  const todayD = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+  if (/오늘/.test(text)) {
+    date = todayStr();
+    text = text.replace(/오늘/g, '');
+  }
+  if (/내일/.test(text)) {
+    const d = new Date(todayD); d.setDate(d.getDate()+1);
+    date = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    text = text.replace(/내일/g, '');
+  }
+  if (/모레/.test(text)) {
+    const d = new Date(todayD); d.setDate(d.getDate()+2);
+    date = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    text = text.replace(/모레/g, '');
+  }
+  // 요일 → 다음 해당 요일
+  const dayMap = { '월':1,'화':2,'수':3,'목':4,'금':5,'토':6,'일':0 };
+  text = text.replace(/([월화수목금토일])요일/g, (_, d) => {
+    const target = dayMap[d];
+    const curr = todayD.getDay();
+    let diff = target - curr;
+    if (diff <= 0) diff += 7;
+    const nd = new Date(todayD); nd.setDate(todayD.getDate()+diff);
+    date = `${nd.getFullYear()}-${pad(nd.getMonth()+1)}-${pad(nd.getDate())}`;
+    return '';
+  });
+  // "N월 M일"
+  text = text.replace(/(\d{1,2})월\s?(\d{1,2})일/g, (_, mo, da) => {
+    const y = today.getFullYear();
+    date = `${y}-${pad(parseInt(mo))}-${pad(parseInt(da))}`;
+    return '';
+  });
+
+  // ── Client: text after "@" or "[클라이언트]"
+  text = text.replace(/@(\S+)/g, (_, c) => { client = c; return ''; });
+
+  // Clean up extra spaces
+  text = text.replace(/\s{2,}/g, ' ').trim();
+
+  return { title: text, date, time, client };
+}
+
+// ── Quick-add logic ──
+function onQaInput() {
+  const raw = document.getElementById('qa-input').value;
+  const p = parseNL(raw);
+  updateQaParsedPreview(p);
+  // Auto-fill date/time fields if detected
+  if (p.date) document.getElementById('qa-date').value = p.date;
+  if (p.time) document.getElementById('qa-time').value = p.time;
+  if (p.client) document.getElementById('qa-client').value = p.client;
+}
+
+function updateQaParsedPreview(p) {
+  const preview = document.getElementById('qaParsed');
+  let html = '';
+  if (p.date) {
+    const d = new Date(p.date+'T12:00:00');
+    html += `<span class="qa-pill p-date">📅 ${d.getMonth()+1}/${d.getDate()}</span>`;
+  }
+  if (p.time) {
+    html += `<span class="qa-pill p-time">⏰ ${p.time}</span>`;
+  }
+  if (p.client) {
+    html += `<span class="qa-pill p-client">👤 ${esc(p.client)}</span>`;
+  }
+  preview.innerHTML = html;
+}
+
+function showQaOpts() {
+  document.getElementById('qaOpts').classList.add('show');
+  // default to today
+  if (!document.getElementById('qa-date').value) {
+    document.getElementById('qa-date').value = todayStr();
+  }
+}
+
+function resetQa() {
+  document.getElementById('qa-input').value = '';
+  document.getElementById('qa-client').value = '';
+  document.getElementById('qa-date').value = '';
+  document.getElementById('qa-time').value = '';
+  document.getElementById('qa-status').value = 'todo';
+  document.getElementById('qaParsed').innerHTML = '';
+  qaUrgent = false;
+  document.getElementById('qa-urg').classList.remove('on');
+  document.getElementById('qaOpts').classList.remove('show');
+}
+
+function togQaUrgent() {
+  qaUrgent = !qaUrgent;
+  document.getElementById('qa-urg').classList.toggle('on', qaUrgent);
+}
+
+function submitQa() {
+  const raw = document.getElementById('qa-input').value.trim();
+  if (!raw) { document.getElementById('qa-input').focus(); return; }
+  const p = parseNL(raw);
+  // field overrides parsed values
+  const client = document.getElementById('qa-client').value.trim() || p.client;
+  const date   = document.getElementById('qa-date').value || p.date;
+  const time   = document.getElementById('qa-time').value || p.time;
+  const status = document.getElementById('qa-status').value;
+  const title  = p.title || raw;
+
+  tasks.unshift({
+    id: Date.now().toString(),
+    title, client, date, time, status,
+    note: '',
+    urgent: qaUrgent,
+    담당자: (person === 'all') ? DEFAULT_OWNER : person,
+    createdAt: Date.now()
+  });
+  persist(); resetQa(); renderList();
+  // refocus for next entry
+  setTimeout(() => document.getElementById('qa-input').focus(), 50);
+}
+
+// ── 칸반 칸 정의 (위 → 아래 순서) ──
+// 진행 중인 일이 맨 위로 오게: 진행 중 → 피드백 대기 → 시작 전 → 완료
+// (체크 동그라미를 눌렀을 때의 단계 진행 순서는 advanceStatus의 order로 따로 관리)
+const COLUMNS = [
+  { key: 'doing', label: '진행 중',     color: '#5856D6' },
+  { key: 'wait',  label: '피드백 대기', color: '#FF9500' },
+  { key: 'todo',  label: '시작 전',     color: '#8E8E93' },
+  { key: 'done',  label: '완료',        color: '#34C759' },
+];
+const COLMETA = Object.fromEntries(COLUMNS.map(c => [c.key, c]));
+
+// ── Counts (지금 담당자 탭 기준) ──
+function updateCounts() {
+  const base = personPool();
+  document.getElementById('cnt-all').textContent   = base.filter(t => t.status !== 'done').length;
+  document.getElementById('cnt-todo').textContent  = base.filter(t => (t.status||'todo') === 'todo').length;
+  document.getElementById('cnt-doing').textContent = base.filter(t => t.status === 'doing').length;
+  document.getElementById('cnt-wait').textContent  = base.filter(t => t.status === 'wait').length;
+  document.getElementById('cnt-done').textContent  = base.filter(t => t.status === 'done').length;
+}
+
+// ── Render (칸반) ──
+function renderList() {
+  updateCounts();
+  const q = document.getElementById('searchQ').value.toLowerCase();
+
+  // 담당자 탭으로 먼저 거르기
+  let pool = personPool();
+  // 검색어로 거르기
+  if (q) pool = pool.filter(t =>
+    (t.title||'').toLowerCase().includes(q) ||
+    (t.client||'').toLowerCase().includes(q) ||
+    (t.note||'').toLowerCase().includes(q)
+  );
+
+  // 타일을 누르면 그 칸만, '전체'면 네 칸 모두 보여줍니다.
+  const showCols = (filter === 'all') ? COLUMNS : COLUMNS.filter(c => c.key === filter);
+
+  document.getElementById('secTitle').textContent = (filter === 'all') ? '업무 보드' : COLMETA[filter].label;
+  document.getElementById('secTitle').style.color = (filter === 'all') ? '#007AFF' : COLMETA[filter].color;
+
+  const container = document.getElementById('taskList');
+  container.className = 'kanban';
+
+  const we = weekEndStr();
+  let html = '';
+  showCols.forEach(col => {
+    const items = pool.filter(t => (t.status || 'todo') === col.key);
+    // '이번 주' 보기면 미래 날짜 할 일을 '나중'으로 분리(완료 칸은 분리 안 함)
+    let nowItems = items, laterItems = [];
+    if (horizon === 'week' && col.key !== 'done') {
+      nowItems   = items.filter(t => !isLater(t, we));
+      laterItems = items.filter(t =>  isLater(t, we));
+    }
+    let cards = nowItems.map(t => cardHtml(t, col.key)).join('');
+    // 지금 보일 카드가 없고 나중만 있을 때를 위한 안내
+    let body;
+    if (nowItems.length) body = cards;
+    else if (laterItems.length) body = '<div class="col-empty">이번 주 할 일 없음</div>';
+    else body = '<div class="col-empty">여기로 카드를 끌어다 놓으세요</div>';
+    // '나중' 접이 줄
+    let laterBlock = '';
+    if (laterItems.length) {
+      const open = !!laterOpen[col.key];
+      const next = laterItems.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''))[0];
+      const whenLabel = next ? `· 다음 ${formatDateTime(next)}` : '';
+      laterBlock = `<button class="later-toggle" onclick="event.stopPropagation(); toggleLater('${col.key}')">
+        ${open?'▾':'▸'} 나중 ${laterItems.length}개 <span class="lt-when">${whenLabel}</span>
+      </button>${open ? laterItems.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(t=>cardHtml(t,col.key)).join('') : ''}`;
+    }
+    html += `<div class="kanban-col" data-col="${col.key}"
+        ondragover="onColOver(event)" ondragleave="onColLeave(event)" ondrop="onColDrop(event,'${col.key}')">
+      <div class="col-head"><span class="col-dot" style="background:${col.color}"></span>${col.label}<span class="col-count">${items.length}</span></div>
+      ${body}${laterBlock}
+    </div>`;
+  });
+  container.innerHTML = html;
+}
+
+// ── 카드를 누르면 다음 단계로 (시작 전 → 진행 중 → 피드백 대기 → 완료) ──
+function advanceStatus(id) {
+  const t = tasks.find(x => x.id === id);
+  if (!t) return;
+  const order = ['todo', 'doing', 'wait', 'done'];
+  const i = order.indexOf(t.status || 'todo');
+  // 완료에서 한 번 더 누르면 다시 '시작 전'으로 돌아갑니다.
+  t.status = order[(i + 1) % order.length];
+  persist(); renderList();
+}
+
+// ── 카드 드래그해서 다른 칸으로 옮기기 ──
+let dragId = null;
+function onCardDragStart(e, id) {
+  dragId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', id); } catch (_) {}
+  setTimeout(() => e.target.classList.add('dragging'), 0);
+}
+function onCardDragEnd(e) {
+  e.target.classList.remove('dragging');
+  document.querySelectorAll('.kanban-col').forEach(c => c.classList.remove('drag-over'));
+  dragId = null;
+}
+function onColOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.classList.add('drag-over');
+}
+function onColLeave(e) { e.currentTarget.classList.remove('drag-over'); }
+function onColDrop(e, col) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const id = dragId || (e.dataTransfer && e.dataTransfer.getData('text/plain'));
+  if (!id) return;
+  const t = tasks.find(x => x.id === id);
+  if (t && t.status !== col) { t.status = col; persist(); renderList(); }
+}
+
+function setFilter(f, el) {
+  filter = f;
+  document.querySelectorAll('.tile, .nav-row').forEach(e => e.classList.remove('active'));
+  if (el) el.classList.add('active');
+  // 상태 타일은 보드(칸반)용이라, 진행판에서 누르면 보드로 돌아갑니다.
+  if (view !== 'board') {
+    view = 'board';
+    document.body.classList.remove('view-progress');
+    localStorage.setItem('board_view', 'board');
+  }
+  closeDetail(); renderList();
+}
+
+// 담당자 탭 전환 (전체 할 일 / 신종호 / 김지영) — 보드·진행판 공통
+function setPerson(p, el) {
+  person = p;
+  document.querySelectorAll('.person-tab').forEach(e => e.classList.remove('active'));
+  if (el) el.classList.add('active');
+  closeDetail(); rerender();
+}
+
+// 기간 보기 전환 (이번 주 / 전체 기간)
+function setHorizon(h, el) {
+  horizon = h;
+  if (h !== 'week') laterOpen = {};   // 전체 보기로 가면 접힘 상태 초기화
+  document.querySelectorAll('.hz-chip').forEach(e => e.classList.remove('active'));
+  if (el) el.classList.add('active');
+  localStorage.setItem('board_horizon', h);
+  renderList();
+}
+
+// 한 칸의 '나중(미래)' 묶음 펼치기/접기
+function toggleLater(colKey) {
+  laterOpen[colKey] = !laterOpen[colKey];
+  renderList();
+}
+
+// ── Detail ──
+function openDetail(id) {
+  detailId = id;
+  const t = tasks.find(x=>x.id===id);
+  if (!t) return;
+  document.getElementById('dp-title').value   = t.title;
+  document.getElementById('dp-owner').value   = ownerOf(t);
+  document.getElementById('dp-client').value  = t.client||'';
+  document.getElementById('dp-date').value    = t.date||'';
+  document.getElementById('dp-time').value    = t.time||'';
+  document.getElementById('dp-status').value  = t.status;
+  document.getElementById('dp-note').value    = t.note||'';
+  document.getElementById('dp-urgent').checked = !!t.urgent;
+  document.getElementById('detail').classList.add('open');
+}
+function closeDetail() { detailId=null; document.getElementById('detail').classList.remove('open'); }
+function saveDetail() {
+  if (!detailId) return;
+  const t = tasks.find(x=>x.id===detailId);
+  if (!t) return;
+  t.title  = document.getElementById('dp-title').value.trim()||t.title;
+  t.담당자  = document.getElementById('dp-owner').value;
+  t.client = document.getElementById('dp-client').value.trim();
+  t.date   = document.getElementById('dp-date').value;
+  t.time   = document.getElementById('dp-time').value;
+  t.status = document.getElementById('dp-status').value;
+  t.note   = document.getElementById('dp-note').value.trim();
+  t.urgent = document.getElementById('dp-urgent').checked;
+  persist(); closeDetail(); rerender();
+}
+function delDetail() {
+  if (!detailId||!confirm('이 업무를 삭제할까요?')) return;
+  tasks = tasks.filter(x=>x.id!==detailId);
+  persist(); closeDetail(); rerender();
+}
+
+// ── iCal ──
+function exportIcs() {
+  if (!detailId) return;
+  const t = tasks.find(x=>x.id===detailId);
+  if (!t||!t.date) { alert('날짜를 먼저 설정해주세요.'); return; }
+  const stamp = new Date().toISOString().replace(/[-:.]/g,'').slice(0,15)+'Z';
+  let dtstart, dtend;
+  if (t.time) {
+    const dt = new Date(t.date+'T'+t.time);
+    const fmt = d => d.toISOString().replace(/[-:.]/g,'').slice(0,15)+'Z';
+    dtstart=`DTSTART:${fmt(dt)}`; dtend=`DTEND:${fmt(new Date(dt.getTime()+3600000))}`;
+  } else {
+    const d=t.date.replace(/-/g,'');
+    dtstart=`DTSTART;VALUE=DATE:${d}`; dtend=`DTEND;VALUE=DATE:${d}`;
+  }
+  const ics = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//AgencyTodo//KO','BEGIN:VEVENT',
+    `UID:${t.id}@agencytodo`,`DTSTAMP:${stamp}`,dtstart,dtend,
+    `SUMMARY:${t.title}${t.client?' ['+t.client+']':''}`,
+    `DESCRIPTION:${(t.note||'').replace(/\n/g,'\\n')}`,
+    'END:VEVENT','END:VCALENDAR'].join('\r\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([ics],{type:'text/calendar'}));
+  a.download=t.title.replace(/\s+/g,'_')+'.ics'; a.click();
+}
+
+// ── Keyboard ──
+document.addEventListener('keydown', e => {
+  const qaInput = document.getElementById('qa-input');
+  if (e.key === 'Enter') {
+    if (document.activeElement === qaInput || document.getElementById('qaOpts').classList.contains('show')) {
+      e.preventDefault();
+      submitQa();
+    }
+  }
+  if (e.key === 'Escape') {
+    resetQa();
+    closeDetail();
+    document.activeElement && document.activeElement.blur();
+  }
+});
+
+// Close opts when clicking outside
+document.addEventListener('click', e => {
+  const wrap = document.querySelector('.quick-add-wrap');
+  if (!wrap.contains(e.target) && !document.getElementById('qa-input').value.trim()) {
+    document.getElementById('qaOpts').classList.remove('show');
+  }
+});
+
+// ── 왼쪽 목록(사이드바) 접기/펼치기 ──
+function toggleSidebar() {
+  const shell = document.querySelector('.shell');
+  shell.classList.toggle('no-sidebar');
+  // 접힘 여부를 기억해서 다음에 열 때도 유지합니다.
+  localStorage.setItem('sidebar_hidden', shell.classList.contains('no-sidebar') ? '1' : '0');
+}
+
+// ──────────────────────────────────────────────────────────
+//  진행판 (프로젝트별 진행 카드)
+//  - 데이터: 할일(tasks) + 프로젝트 메타(projects.json)
+//  - 둘을 프로젝트명으로 묶어 마감 임박순 카드로 보여줍니다.
+// ──────────────────────────────────────────────────────────
+let view = 'board';        // 'board'(칸반) | 'progress'(진행판)
+let projects = [];         // projects.json — 프로젝트 메타 합본
+let pClass = 'all';        // 분류 필터: 'all' | '대행' | '자체'
+let unlinkedOpen = false;  // '프로젝트 미연결' 묶음 펼침 여부
+let doneOpen = false;      // '완료·중단' 묶음 펼침 여부
+
+// 프로젝트 메타를 같은 폴더의 projects.json에서 불러옵니다(수집 스크립트가 만들어 둠).
+async function loadProjects() {
+  try {
+    const res = await fetch('projects.json', { cache: 'no-store' });
+    if (res.ok) {
+      const j = await res.json();
+      if (Array.isArray(j)) projects = j;
+    }
+  } catch (e) {
+    console.error('프로젝트 메타 불러오기 실패(진행판 비어 보일 수 있음)', e);
+  }
+}
+
+// 지금 뷰에 맞는 화면을 다시 그립니다.
+function rerender() { if (view === 'progress') renderProgress(); else renderList(); }
+
+// 뷰 전환 (보드 / 진행판) — 진행판은 사이드바 항목으로 들어감
+function setView(v) {
+  view = v;
+  document.body.classList.toggle('view-progress', v === 'progress');
+  const np = document.getElementById('nav-progress');
+  if (v === 'progress') {
+    // 진행판으로 가면 타일·다른 목록 활성 해제하고 진행판만 활성
+    document.querySelectorAll('.tile, .nav-row').forEach(e => e.classList.remove('active'));
+    if (np) np.classList.add('active');
+  } else if (np) {
+    np.classList.remove('active');
+  }
+  localStorage.setItem('board_view', v);
+  closeDetail();
+  rerender();
+}
+
+// 분류 필터 (전체 / 대행 / 자체)
+function setPClass(c, el) {
+  pClass = c;
+  document.querySelectorAll('.pv-chip').forEach(b => b.classList.remove('active'));
+  if (el) el.classList.add('active');
+  renderProgress();
+}
+function toggleUnlinked() { unlinkedOpen = !unlinkedOpen; renderProgress(); }
+function toggleDoneProjects() { doneOpen = !doneOpen; renderProgress(); }
+
+// 프로젝트 담당자(없으면 기본 담당자)
+function projOwner(p) { return p.담당자 || DEFAULT_OWNER; }
+// 이름 정규화: 공백 제거 + 소문자 (예: "M650 탄광…" ↔ task client "M650")
+function pnorm(s) { return (s || '').replace(/\s+/g, '').toLowerCase(); }
+// 한 프로젝트에 묶이는 할일들 = client가 프로젝트 이름과 포함관계인 것
+function tasksOfProject(p, pool) {
+  const pn = pnorm(p.이름);
+  if (!pn) return [];
+  return pool.filter(t => {
+    const c = pnorm(t.client);
+    if (!c) return false;
+    return pn === c || pn.includes(c) || c.includes(pn);
+  });
+}
+// D-day = 마감일 − 오늘 (마감일 없으면 null)
+function ddayOf(p) {
+  if (!p.마감일) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const due = new Date(p.마감일 + 'T00:00:00');
+  return Math.round((due - today) / 86400000);
+}
+// 신호등 색
+function projSignal(p, dday, hasUrgent) {
+  if (p.진행상태 === '중단') return 'gray';
+  if (p.진행상태 === '피드백 대기' || p.진행상태 === '회신 대기') return 'white';
+  if (dday === null) return 'white';
+  if (hasUrgent || dday <= 7) return 'red';
+  if (dday <= 14) return 'yellow';
+  return 'green';
+}
+// D-day 라벨
+function ddayLabel(p, dday) {
+  if (p.진행상태 === '완료') return '완료';
+  if (p.진행상태 === '중단') return '중단';
+  if (p.진행상태 === '피드백 대기') return '회신 대기';
+  if (dday === null) return '마감 미정';
+  if (dday === 0) return 'D-day';
+  return dday > 0 ? `D-${dday}` : `D+${-dday}`;
+}
+// 다음 액션 = 진행 중 할일 우선, 없으면 가장 임박한 시작 전 할일
+function nextAction(ts) {
+  const doing = ts.find(t => t.status === 'doing');
+  if (doing) return doing.title;
+  const todos = ts.filter(t => (t.status || 'todo') === 'todo');
+  if (!todos.length) return null;
+  todos.sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
+  return todos[0].title;
+}
+// 진행률 게이지 5칸
+function gaugeHtml(done, total) {
+  if (!total) return '';
+  const filled = Math.round(done / total * 5);
+  let s = '';
+  for (let i = 0; i < 5; i++) s += (i < filled) ? '●' : '<span class="g-off">○</span>';
+  return s;
+}
+
+// 카드 안 과업 순서: 진행 중 → 피드백 대기 → 시작 전 → (완료는 '한 일'로 맨 뒤)
+const STATUS_RANK = { doing: 0, wait: 1, todo: 2, done: 3 };
+const STATUS_MARK = { doing: '◐', wait: '◑', todo: '○', done: '✓' };
+
+// 과업 한 줄 (누르면 상세 패널 열림 — 보드와 같은 편집. 카드 펼침과 안 겹치게 전파 중단)
+function taskLine(t) {
+  const s = t.status || 'todo';
+  return `<div class="pc-task${s === 'done' ? ' done' : ''}" onclick="event.stopPropagation(); openDetail('${t.id}')" title="누르면 자세히 / 수정">`
+    + `<span class="tm tm-${s}">${STATUS_MARK[s] || '○'}</span>`
+    + `<span class="pt-title">${esc(t.title)}</span></div>`;
+}
+
+// 한 프로젝트의 과업 목록 — 안 한 일(순차) 먼저, 구분선, 한 일(완료)
+function taskRowsHtml(ts) {
+  if (!ts.length) return '';
+  const sorted = ts.slice().sort((a, b) => {
+    const ra = STATUS_RANK[a.status || 'todo'] ?? 2, rb = STATUS_RANK[b.status || 'todo'] ?? 2;
+    if (ra !== rb) return ra - rb;
+    return (a.date || '9999').localeCompare(b.date || '9999');
+  });
+  const undone = sorted.filter(t => t.status !== 'done');
+  const done   = sorted.filter(t => t.status === 'done');
+  const CAP = 4;   // 완료가 많으면 접어서 요약
+  let rows = undone.map(taskLine).join('');
+  if (done.length) {
+    if (undone.length) rows += '<div class="pc-task-div"></div>';
+    rows += done.slice(0, CAP).map(taskLine).join('');
+    if (done.length > CAP) rows += `<div class="pc-task more">✓ 한 일 ${done.length - CAP}건 더</div>`;
+  }
+  return `<div class="pc-tasks">${rows}</div>`;
+}
+
+// 카드별 펼침 상태 (프로젝트 이름으로 기억)
+let pvExpanded = {};
+function togglePcard(name) { pvExpanded[name] = !pvExpanded[name]; renderProgress(); }
+
+// 진행 카드 한 장 — 기본은 진행 중·피드백 대기만, 누르면 전체 과업
+function pcardHtml(e) {
+  const { p, done, total, dday, sig } = e;
+  const gauge = gaugeHtml(done, total);
+  const cls = p.분류 || '';
+  const payDot = p.입금상태 ? `<span class="pc-pay">· ${esc(p.입금상태)}</span>` : '';
+  const expanded = !!pvExpanded[p.이름];
+  const attrName = esc(p.이름).replace(/'/g, "\\'");   // onclick 안에 안전하게
+  const waitN = e.ts.filter(t => t.status === 'wait').length;   // 회신대기 할일 수
+
+  // 활성(진행 중·대기) / 나머지(시작 전·완료)
+  const active = e.ts.filter(t => t.status === 'doing' || t.status === 'wait');
+  const rest   = e.ts.filter(t => t.status !== 'doing' && t.status !== 'wait');
+
+  // 본문(과업) — 접힘이면 활성(진행 중·대기)만, 펼침이면 전체(순차+구분선)
+  // 회신 대기는 상태글자(주황)로 표시하고, 실제로는 '○○ 회신 대기' 할일로 관리한다.
+  let body;
+  if (expanded) {
+    body = taskRowsHtml(e.ts);
+  } else if (active.length) {
+    const sorted = active.slice().sort((a, b) =>
+      (STATUS_RANK[a.status] - STATUS_RANK[b.status]) || (a.date || '9999').localeCompare(b.date || '9999'));
+    body = `<div class="pc-tasks">${sorted.map(taskLine).join('')}</div>`;
+  } else if (e.ts.length) {
+    body = '<div class="pc-noactive">진행 중·대기 중인 일 없음</div>';
+  } else {
+    body = '';
+  }
+
+  // 펼치기/접기 줄
+  let toggle = '';
+  if (expanded) {
+    toggle = `<div class="pc-toggle">▾ 접기</div>`;
+  } else if (rest.length) {
+    const td = rest.filter(t => t.status !== 'done').length;
+    const dn = rest.filter(t => t.status === 'done').length;
+    const parts = [];
+    if (td) parts.push(`시작 전 ${td}`);
+    if (dn) parts.push(`완료 ${dn}`);
+    toggle = `<div class="pc-toggle">▸ ${parts.join(' · ')} 더 보기</div>`;
+  }
+
+  return `<div class="pcard sig-${sig}" onclick="togglePcard('${attrName}')">
+    <div class="pc-top">
+      <span class="pc-sig"></span>
+      <span class="pc-name">${esc(p.이름)}</span>
+      <span class="pc-dday">${ddayLabel(p, dday)}</span>
+    </div>
+    <div class="pc-mid">
+      <span class="pc-stage${waitN ? ' stage-wait' : ''}">${waitN ? '피드백 대기' : esc(p.진행상태 || '')}</span>
+      ${gauge ? `<span class="pc-gauge">${gauge}</span><span class="pc-frac">${done}/${total}</span>` : '<span class="pc-frac">할일 없음</span>'}
+      ${payDot}
+      ${cls ? `<span class="pc-class cls-${cls}">${cls}</span>` : ''}
+    </div>
+    ${body}${toggle}
+  </div>`;
+}
+
+// 진행판 그리기
+function renderProgress() {
+  updateCounts();
+  document.getElementById('secTitle').textContent = '프로젝트 진행판';
+  document.getElementById('secTitle').style.color = '#007AFF';
+
+  // 담당자(person) + 분류(pClass) 필터로 프로젝트 추리기
+  let projs = projects.slice();
+  if (person !== 'all') projs = projs.filter(p => projOwner(p) === person);
+  if (pClass !== 'all') projs = projs.filter(p => (p.분류 || '') === pClass);
+
+  // 미연결 계산용 할일 풀(담당자 필터 적용)
+  const pool = personPool();
+
+  // 매칭은 전체 tasks 기준(프로젝트 카드의 진행률은 담당자 무관 합산)
+  const matchedIds = new Set();
+  const enriched = projs.map(p => {
+    const ts = tasksOfProject(p, tasks);
+    ts.forEach(t => matchedIds.add(t.id));
+    const done = ts.filter(t => t.status === 'done').length;
+    const hasUrgent = ts.some(t => t.urgent && t.status !== 'done');
+    const dday = ddayOf(p);
+    return { p, ts, done, total: ts.length, hasUrgent, dday, sig: projSignal(p, dday, hasUrgent) };
+  });
+
+  // 활성 / 완료·중단 분리, 활성은 마감 임박순(마감 미정은 뒤)
+  const active = enriched.filter(e => e.p.진행상태 !== '완료' && e.p.진행상태 !== '중단');
+  const closed = enriched.filter(e => e.p.진행상태 === '완료' || e.p.진행상태 === '중단');
+  active.sort((a, b) => (a.dday === null ? 1e8 : a.dday) - (b.dday === null ? 1e8 : b.dday));
+
+  let html = '';
+  active.forEach(e => html += pcardHtml(e));
+
+  // 완료·중단(접힘)
+  if (closed.length) {
+    html += `<button class="pv-collapse-btn" onclick="toggleDoneProjects()">${doneOpen ? '▾' : '▸'} 완료·중단 ${closed.length}건</button>`;
+    if (doneOpen) closed.forEach(e => html += pcardHtml(e));
+  }
+
+  // 프로젝트 미연결 묶음 — 어떤 프로젝트에도 안 붙은 할일(담당자 필터 적용)
+  const unlinked = pool.filter(t => !matchedIds.has(t.id));
+  if (unlinked.length) {
+    const groups = {};
+    unlinked.forEach(t => {
+      const k = t.client || '(클라이언트 없음)';
+      (groups[k] = groups[k] || []).push(t);
+    });
+    const keys = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length);
+    html += `<button class="pv-collapse-btn" onclick="toggleUnlinked()">${unlinkedOpen ? '▾' : '▸'} 프로젝트 미연결 ${unlinked.length}건 <span style="color:var(--text3);font-weight:500">· ${keys.length}개 묶음</span></button>`;
+    if (unlinkedOpen) {
+      html += '<div class="unlinked-group">';
+      keys.forEach(k => {
+        html += `<div class="ug-line"><span class="ug-client">${esc(k)}</span><span class="ug-cnt">${groups[k].length}건</span></div><div class="ug-tasks">`;
+        groups[k].forEach(t => html += `<div class="ug-task"><span class="${t.status === 'done' ? 'ut-done' : ''}">${esc(t.title)}</span></div>`);
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+  }
+
+  if (!html) html = '<div class="pv-empty">표시할 프로젝트가 없습니다.</div>';
+  document.getElementById('pvList').innerHTML = html;
+}
+
+// ── Init ──
+// 먼저 파일에서 목록을 불러온 뒤 화면을 그립니다.
+(async () => {
+  // 화면이 좁거나, 지난번에 접어뒀으면 왼쪽 목록을 접은 채로 시작합니다.
+  const saved = localStorage.getItem('sidebar_hidden');
+  const startHidden = saved === '1' || (saved === null && window.innerWidth < 720);
+  if (startHidden) document.querySelector('.shell').classList.add('no-sidebar');
+
+  // 저장된 기간 보기 설정 복원(기본 '이번 주')
+  const hz = localStorage.getItem('board_horizon');
+  if (hz === 'all') {
+    horizon = 'all';
+    document.querySelectorAll('.hz-chip').forEach(e => e.classList.toggle('active', e.dataset.h === 'all'));
+  }
+
+  // 저장된 뷰 복원(기본 '보드')
+  const sv = localStorage.getItem('board_view');
+  if (sv === 'progress') {
+    view = 'progress';
+    document.body.classList.add('view-progress');
+    document.querySelectorAll('.tile, .nav-row').forEach(e => e.classList.remove('active'));
+    const np = document.getElementById('nav-progress');
+    if (np) np.classList.add('active');
+  }
+
+  await Promise.all([loadTasks(), loadProjects()]);
+  rerender();
+  if (view === 'board') document.getElementById('qa-input').focus();
+})();
+
+// 다른 곳(예: Claude가 채팅으로 추가)에서 파일이 바뀌면
+// 이 화면도 5초마다 자동으로 새 내용을 가져옵니다.
+setInterval(async () => {
+  // 입력 중이거나 상세 편집 중이면 건드리지 않습니다.
+  const editing = document.activeElement &&
+    ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName);
+  if (editing || detailId) return;
+  const before = JSON.stringify(tasks);
+  await loadTasks();
+  if (JSON.stringify(tasks) !== before) rerender();
+}, 5000);
+</script>
+</body>
+</html>
