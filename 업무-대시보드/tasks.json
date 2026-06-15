@@ -290,7 +290,7 @@
     "client": "소리쉼",
     "date": "2026-06-12",
     "time": "",
-    "status": "doing",
+    "status": "done",
     "note": "",
     "urgent": false,
     "담당자": "신종호",
@@ -744,11 +744,14 @@
   {
     "title": "스마트플레이스 STEP 1~9 입력",
     "client": "소리쉼",
-    "status": "todo",
+    "status": "wait",
     "date": "",
     "담당자": "신종호",
     "id": "1781501252052",
-    "createdAt": 1781501252052
+    "createdAt": 1781501252052,
+    "time": "",
+    "note": "검수 대기중",
+    "urgent": false
   },
   {
     "title": "세부 기획 확정",
