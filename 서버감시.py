@@ -60,25 +60,37 @@ def 상태쓰기(d):
         json.dump(d, f, ensure_ascii=False, indent=2)
 
 
-def 서비스살았나(이름):
-    """systemctl is-active 결과가 active면 True."""
-    try:
-        결과 = subprocess.run(
-            ["systemctl", "is-active", 이름],
-            capture_output=True, text=True, timeout=10,
-        )
-        return 결과.stdout.strip() == "active"
-    except Exception:
-        return False
+def 서비스살았나(이름, 시도=2, 간격=2):
+    """systemctl is-active 가 active면 True. 일시적 실패 대비 재시도."""
+    for i in range(시도):
+        try:
+            결과 = subprocess.run(
+                ["systemctl", "is-active", 이름],
+                capture_output=True, text=True, timeout=10,
+            )
+            if 결과.stdout.strip() == "active":
+                return True
+        except Exception:
+            pass
+        if i < 시도 - 1:
+            time.sleep(간격)
+    return False
 
 
-def 보드응답하나():
-    try:
-        요청 = urllib.request.Request(보드주소, method="GET")
-        with urllib.request.urlopen(요청, timeout=10) as 응답:
-            return 200 <= 응답.status < 400
-    except Exception:
-        return False
+def 보드응답하나(시도=3, 간격=2):
+    """보드웹이 응답하면 True. 작은 VM의 일시적 지연(오탐) 방지를 위해 여러 번 시도.
+    진짜 장애는 계속 실패하므로 그대로 잡힌다."""
+    for i in range(시도):
+        try:
+            요청 = urllib.request.Request(보드주소, method="GET")
+            with urllib.request.urlopen(요청, timeout=10) as 응답:
+                if 200 <= 응답.status < 400:
+                    return True
+        except Exception:
+            pass
+        if i < 시도 - 1:
+            time.sleep(간격)
+    return False
 
 
 def 디스크사용률():
