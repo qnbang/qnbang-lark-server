@@ -19,9 +19,18 @@ def 설정읽기():
 
 
 def 서비스():
-    인증 = service_account.Credentials.from_service_account_file(
-        열쇠파일, scopes=["https://www.googleapis.com/auth/calendar"]
-    )
+    # 인증 방식:
+    #  1) 키 파일(google-key.json)이 있으면 그걸로 인증한다(기존 방식).
+    #  2) 키 파일이 없으면 VM에 붙은 서비스계정으로 자동 인증한다(ADC).
+    #     → 키 파일을 디스크에서 없애도 동작하게 하는 "키리스" 대비.
+    스코프 = ["https://www.googleapis.com/auth/calendar"]
+    if os.path.exists(열쇠파일):
+        인증 = service_account.Credentials.from_service_account_file(
+            열쇠파일, scopes=스코프
+        )
+    else:
+        import google.auth
+        인증, _ = google.auth.default(scopes=스코프)
     return build("calendar", "v3", credentials=인증, cache_discovery=False)
 
 
