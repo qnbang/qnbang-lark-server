@@ -603,7 +603,7 @@
     "title": "[베스트구조] 현재 진행사항·앞으로 개발 완수 일정 전달",
     "client": "베스트구조",
     "date": "2026-06-15",
-    "status": "todo",
+    "status": "wait",
     "urgent": true,
     "note": "오늘까지 전달",
     "id": "1781501136412",
@@ -630,11 +630,14 @@
   {
     "title": "개발자 자료(zip) 회신 대기",
     "client": "베스트구조",
-    "status": "wait",
+    "status": "done",
     "date": "",
     "담당자": "신종호",
     "id": "1781501247097",
-    "createdAt": 1781501247097
+    "createdAt": 1781501247097,
+    "time": "",
+    "note": "",
+    "urgent": false
   },
   {
     "title": "커스텀 도메인 mohoso.co.kr 연결",
