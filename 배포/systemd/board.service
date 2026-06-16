@@ -1,0 +1,17 @@
+[Unit]
+Description=업무 대시보드 (보드 웹, 포트 7777)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=charlie
+WorkingDirectory=/home/charlie/lark-calendar/업무-대시보드
+Environment=PYTHONUTF8=1
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/charlie/lark-calendar/venv/bin/python /home/charlie/lark-calendar/업무-대시보드/server.py --no-browser
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

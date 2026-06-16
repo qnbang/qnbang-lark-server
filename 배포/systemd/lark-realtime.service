@@ -1,0 +1,17 @@
+[Unit]
+Description=Lark realtime long connection (큐앤뱅 일정/지출 자동화)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=charlie
+WorkingDirectory=/home/charlie/lark-calendar
+Environment=PYTHONUTF8=1
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/charlie/lark-calendar/venv/bin/python /home/charlie/lark-calendar/실시간.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

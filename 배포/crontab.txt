@@ -1,0 +1,3 @@
+0 0 * * * cd /home/charlie/lark-calendar && PYTHONUTF8=1 ./venv/bin/python 아침브리핑.py >> /home/charlie/lark-calendar/브리핑로그.txt 2>&1
+*/5 * * * * cd /home/charlie/lark-calendar && venv/bin/python 서버감시.py >> 서버감시로그.txt 2>&1
+*/30 * * * * cd /home/charlie/lark-calendar && ./자동백업.sh >> 자동백업로그.txt 2>&1
