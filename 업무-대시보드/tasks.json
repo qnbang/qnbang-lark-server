@@ -621,11 +621,14 @@
   {
     "title": "EXE vs 소스 결과 차이 분석",
     "client": "베스트구조",
-    "status": "doing",
+    "status": "done",
     "date": "",
     "담당자": "신종호",
     "id": "1781501246703",
-    "createdAt": 1781501246703
+    "createdAt": 1781501246703,
+    "time": "",
+    "note": "",
+    "urgent": false
   },
   {
     "title": "개발자 자료(zip) 회신 대기",
