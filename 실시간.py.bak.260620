@@ -8,7 +8,6 @@
 import json
 import lark as 라크          # 우리 도구 (메시지보내기, 설정읽기, 처리기록 등)
 import 처리
-import 과업해석
 import lark_oapi
 
 
@@ -73,10 +72,7 @@ def 메시지왔을때(data):
             처리.지출메시지처리(토큰, 설정["지출"], 본문)
         elif "견적서" in 설정 and chat_id == 설정["견적서"].get("chat_id"):
             처리.견적서메시지처리(토큰, 설정["견적서"], 본문)
-        elif chat_id == "oc_9c6524739c743cfb0f5d6b60ae8430d3":
-            과업해석.과업메시지처리(본문)
         else:
-            print("미등록방chat:", chat_id, 본문[:20], flush=True)
             return  # 우리가 쓰는 방이 아니면 무시
 
         _처리표시(글ID)
