@@ -5,10 +5,12 @@
   "소리쉼 명함 6/20"        → 새 과업 생성(기한 6/20, 내작업)
   "소리쉼 보냄" / "금문도 답옴" → 기존 과업 공위치 변경(보냄→고객대기, 답옴→내작업)
 """
-import re, json, urllib.request
+import re, json, os, urllib.request
 from datetime import datetime, timezone, timedelta
 
 서울 = timezone(timedelta(hours=9))
+직전반영_파일 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "과업_직전반영.json")
+직전반영_유효분 = 90   # 직전 반영을 정정 맥락으로 쓰는 시간 한도(분)
 WRITE = "https://script.google.com/macros/s/AKfycbxPt24eFUbUP1cPwsv5Gspc3pak_hvqIdGf7T4cbvqJSxKkKimCdEhxdSll0yMPJ5dPAw/exec"
 READ = "https://script.google.com/macros/s/AKfycbwh6lSVmDXCcvjZwDLPCUtvaEG4aOQmTfrVGRbsaJjB5CYtulRzdnd27oKEAyc69RTp/exec"
 WEBHOOK = "https://open.larksuite.com/open-apis/bot/v2/hook/4d631621-630b-49aa-9036-f26297e02e26"
@@ -242,6 +244,130 @@ def 지시처리(본문, dry_run=False, 기본담당="신종호"):
     답장("✅ 오늘 지시 %d건 반영\n%s\n매칭 맞나요? 틀리면 고쳐 보내세요." % (len(결과), "\n".join(줄)))
 
 
+# ── 직전 반영 맥락(정정 처리용) ───────────────────────────────────────
+def _직전반영_읽기():
+    """최근(유효시간 내) 반영 내역을 정정 맥락 문자열로. 없으면 None."""
+    try:
+        d = json.load(open(직전반영_파일, encoding="utf-8"))
+        ts = datetime.fromisoformat(d["ts"])
+        if (datetime.now(서울) - ts).total_seconds() > 직전반영_유효분 * 60:
+            return None
+        줄 = []
+        for it in d.get("항목들", []):
+            때 = (" · " + it["기한"]) if it.get("기한") else ""
+            줄.append("• %s: %s%s" % (it.get("프로젝트", ""), it.get("할일", ""), 때))
+        return "\n".join(줄) or None
+    except Exception:
+        return None
+
+
+def _직전반영_쓰기(항목들):
+    try:
+        json.dump({"ts": datetime.now(서울).isoformat(), "항목들": 항목들},
+                  open(직전반영_파일, "w", encoding="utf-8"), ensure_ascii=False)
+    except Exception as e:
+        print("직전반영 저장 실패:", e)
+
+
+# ── AI로 "오늘 지시" 처리 (정규식 파서 대체) ──────────────────────────
+def 지시처리_AI(본문, gemini설정, dry_run=False, 기본담당="신종호"):
+    """제미나이로 자유 문장 지시를 구조화 → 기존 과업 갱신 / 신규 추가.
+    실패 시 None 반환(호출부에서 정규식 파서로 안전 대체)."""
+    import 지시AI해석
+    d = json.loads(urllib.request.urlopen(READ + "?key=" + KEY, timeout=40).read())
+    rows = d['sheets'].get('과업')
+    if not rows or len(rows) < 2:
+        return 답장("⚠️ 과업 시트를 못 읽었어요") if not dry_run else ([], [])
+    head = [str(h) for h in rows[0]]
+    pi, ci, ni = head.index('프로젝트'), head.index('고객'), head.index('과업명')
+    data = [r for r in rows[1:] if any(str(c).strip() for c in r)]
+    if len(data) < 5:   # 안전장치: 비정상적으로 적게 읽히면 중단(대량 유실 방지)
+        return 답장("⚠️ 과업이 %d건만 읽혀 저장을 막았어요(읽기 오류). 잠시 후 다시." % len(data)) if not dry_run else ([], [])
+
+    tasks = []
+    for r in data:
+        pj = str(r[pi]) if pi < len(r) else ''
+        cl = str(r[ci]) if ci < len(r) else ''
+        nm = str(r[ni]) if ni < len(r) else ''
+        tasks.append({'r': r, 'pj': pj, 'cl': cl, 'name': nm})
+
+    직전 = _직전반영_읽기()
+    res = 지시AI해석.해석(본문, tasks, gemini설정, 직전)
+    if not res.get("ok"):
+        print("AI 지시해석 실패:", res.get("이유"))
+        return None   # 정규식 파서로 대체
+    항목들 = res["항목들"]
+    if not 항목들:
+        if not dry_run:
+            답장("⚠️ 반영할 지시를 못 찾았어요. 예) '망원 선금 상인회 문의 내일'")
+        return [], []
+
+    # AI가 고른 프로젝트명 → 기존 과업 행 매칭(프로젝트/고객명 부분일치)
+    def _찾기(프로젝트):
+        프 = 프로젝트.strip()
+        매치 = []
+        for t in tasks:
+            blob = t['pj'] + ' ' + t['cl']
+            first = t['pj'].split()[0] if t['pj'].split() else t['pj']
+            if 프 and (프 in blob or blob.split() and 프 in t['pj'] or first == 프 or 프 in t['cl']):
+                매치.append(t)
+        return 매치
+
+    결과, 신규목록 = [], []
+    for it in 항목들:
+        if it["신규"]:
+            신규목록.append(it)
+            결과.append((it["프로젝트"] + "(신규)", it["할일"], it["기한"], it["공위치"]))
+            continue
+        매치 = _찾기(it["프로젝트"])
+        if not 매치:   # AI는 기존이라 했지만 못 찾으면 신규로 안전 처리
+            신규목록.append(it)
+            결과.append((it["프로젝트"] + "(신규)", it["할일"], it["기한"], it["공위치"]))
+            continue
+        for t in 매치:
+            t['_next'] = it["할일"]
+            t['_due'] = it["기한"]
+            t['_pos'] = it["공위치"]
+        결과.append((매치[0]['pj'].split()[0] if 매치[0]['pj'].split() else 매치[0]['pj'],
+                     it["할일"], it["기한"], it["공위치"]))
+
+    if dry_run:
+        return 결과, 신규목록
+
+    # 쓰기: 갱신 + 신규 → 한 번에 덮어쓰기
+    행들 = []
+    for t in tasks:
+        r = t['r']
+        row = [_norm(r[head.index(h)] if head.index(h) < len(r) else '') for h in HEADER]
+        if '_next' in t:
+            if t['_next']:
+                row[HEADER.index('다음할일')] = t['_next']
+                row[HEADER.index('현재상태')] = t['_next']
+            if t['_due']:
+                row[HEADER.index('기한')] = t['_due']
+            row[HEADER.index('공위치')] = t.get('_pos') or '내작업'
+            row[HEADER.index('갱신일')] = _today()
+        행들.append(row)
+    for i, n in enumerate(신규목록):
+        새 = {'id': 'L' + datetime.now(서울).strftime('%y%m%d%H%M%S') + str(i),
+              '프로젝트': n['프로젝트'], '과업명': n['할일'] or n['프로젝트'], '담당자': 기본담당,
+              '공위치': n.get('공위치') or '내작업', '현재상태': '', '다음할일': n['할일'],
+              '기한': n.get('기한', ''), '고객': n['프로젝트'], '돈종류': '매출', '할일': '',
+              '판정근거': '', '갱신일': _today(), '출처': '라크지시', '계약여부': ''}
+        행들.append([새.get(h, '') for h in HEADER])
+    _post(WRITE, {"key": KEY, "종류": "과업", "헤더": HEADER, "행들": 행들,
+                  "드롭다운": {"공위치": 공위치_LIST, "돈종류": ["매출", "투자"]}, "덮어쓰기": True})
+
+    _직전반영_쓰기([{"프로젝트": pj, "할일": act, "기한": due} for pj, act, due, _ in 결과])
+    줄 = []
+    for pj, act, due, pos in 결과:
+        때 = (" · " + due) if due else ""
+        줄.append("• %s: %s%s" % (pj, act or "(확인)", 때))
+    머리 = "✅ 정정 반영 %d건" if res.get("정정") else "✅ 오늘 지시 %d건 반영"
+    답장((머리 % len(결과)) + "\n" + "\n".join(줄) + "\n매칭 맞나요? 틀리면 고쳐 보내세요.")
+    return 결과, 신규목록
+
+
 def 과업메시지처리(본문, 과업설정=None, sender_open=""):
     본문 = (본문 or "").strip()
     if not 본문:
@@ -249,9 +375,17 @@ def 과업메시지처리(본문, 과업설정=None, sender_open=""):
     # 담당 디폴트 = 생성자(라크 보낸 사람). 사용자맵에 없으면 기본담당(종호). 메시지에 이름 명시 시 해석/지시가 그걸 우선.
     매핑 = (과업설정 or {}).get("사용자맵", {})
     기본담당 = 매핑.get(sender_open) or (과업설정 or {}).get("기본담당", "신종호")
-    # 여러 줄(번호 목록) = "오늘 지시" → 일괄 처리
-    if len([l for l in 본문.splitlines() if l.strip()]) >= 2:
-        return 지시처리(본문, 기본담당=기본담당)
+    gemini = (과업설정 or {}).get("gemini") or {}
+    줄수 = len([l for l in 본문.splitlines() if l.strip()])
+    정정시작 = bool(re.match(r'\s*(틀(림|렸|려)|아니|정정|수정해|잘못)', 본문))
+    # 여러 줄(지시 목록)이거나 정정 메시지 → AI로 일괄 해석(키 있으면). 실패 시 정규식 파서.
+    if (줄수 >= 2 or 정정시작):
+        if gemini.get("key"):
+            r = 지시처리_AI(본문, gemini, 기본담당=기본담당)
+            if r is not None:
+                return r
+        if 줄수 >= 2:
+            return 지시처리(본문, 기본담당=기본담당)
     토큰 = 본문.split()
     프로젝트 = 토큰[0]
     공위치 = _공위치_찾기(본문)

@@ -112,19 +112,6 @@
     "담당자": "신종호"
   },
   {
-    "id": "seed-5",
-    "title": "[씨투] 잔금 지급 일정 문의",
-    "client": "씨투",
-    "date": "2026-06-09",
-    "time": "",
-    "status": "done",
-    "note": "",
-    "urgent": false,
-    "createdAt": 5,
-    "calEventId": "99aigaqd6ijci75roestil5820",
-    "담당자": "신종호"
-  },
-  {
     "id": "seed-6",
     "title": "[소리쉼_랜딩페이지] 원고 기획",
     "client": "소리쉼",

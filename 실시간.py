@@ -75,7 +75,9 @@ def 메시지왔을때(data):
         elif "과업" in 설정 and chat_id == 설정["과업"].get("chat_id"):
             import 과업해석   # 보낸 사람 open_id로 담당 자동(생성자 디폴트)
             sender_open = getattr(getattr(ev.sender, "sender_id", None), "open_id", "") or ""
-            과업해석.과업메시지처리(본문, 설정["과업"], sender_open)
+            과업설정 = dict(설정["과업"])   # 자유 문장 지시를 AI로 해석(견적서 제미나이 키 재사용)
+            과업설정.setdefault("gemini", 설정.get("견적서", {}).get("gemini"))
+            과업해석.과업메시지처리(본문, 과업설정, sender_open)
         else:
             return  # 우리가 쓰는 방이 아니면 무시
 
