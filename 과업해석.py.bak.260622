@@ -14,7 +14,7 @@ READ = "https://script.google.com/macros/s/AKfycbwh6lSVmDXCcvjZwDLPCUtvaEG4aOQmT
 WEBHOOK = "https://open.larksuite.com/open-apis/bot/v2/hook/4d631621-630b-49aa-9036-f26297e02e26"
 KEY = "qnbang2026"
 HEADER = ["id", "프로젝트", "과업명", "담당자", "공위치", "현재상태", "다음할일",
-          "기한", "고객", "돈종류", "할일", "판정근거", "갱신일", "출처", "계약여부"]
+          "기한", "고객", "돈종류", "할일", "판정근거", "갱신일", "출처"]
 공위치_LIST = ["시작전", "내작업", "내회신", "고객대기", "보류", "완수"]
 
 # 상태 전이어 → 공위치 (UPDATE 감지). 자유로운 표현도 최대한 묶고, 글자(현재상태)는 항상 살린다.
@@ -113,9 +113,6 @@ def 공위치변경(프로젝트, 공위치, 현재상태=None):
     head = [str(h) for h in rows[0]]
     pi = head.index('프로젝트')
     data = [r for r in rows[1:] if any(str(c).strip() for c in r)]
-    if len(data) < 5:   # 안전장치: 비정상적으로 적게 읽히면 덮어쓰기 중단(대량 유실 방지)
-        답장("⚠️ 과업이 %d건만 읽혀 저장을 막았어요(읽기 오류). 잠시 후 다시." % len(data))
-        return 0, []
     매치 = []
     행들 = []
     for r in data:
@@ -135,117 +132,10 @@ def 공위치변경(프로젝트, 공위치, 현재상태=None):
     return len(매치), 매치
 
 
-# ── 여러 줄 "오늘 지시" 처리 ───────────────────────────────────────────
-TIME_RE = re.compile(r'오늘\s*중|오늘\s*오전|오늘\s*오후|오늘|오전|오후\s*\d{1,2}\s*시(?:까지)?|\d{1,2}\s*시까지|내일|금일|당일|까지')
-
-
-def _parse_due(line):
-    m = re.search(r'(\d{4})-(\d{1,2})-(\d{1,2})', line)
-    if m:
-        return "%04d-%02d-%02d" % (int(m.group(1)), int(m.group(2)), int(m.group(3)))
-    m = re.search(r'(\d{1,2})\s*[월/]\s*(\d{1,2})', line)
-    if m:
-        return "%04d-%02d-%02d" % (datetime.now(서울).year, int(m.group(1)), int(m.group(2)))
-    if "내일" in line:
-        return (datetime.now(서울) + timedelta(days=1)).strftime("%Y-%m-%d")
-    if any(w in line for w in ["오늘", "오전", "오후", "금일", "당일", "시까지"]):
-        return _today()
-    return ""
-
-
-def _clean_action(line, ptoks):
-    """지시 줄에서 시간·날짜·대상(프로젝트)명을 떼고 '할 일'만 남긴다."""
-    s = re.sub(r'\([^)]*\)', ' ', line)   # (과업 쪼개기 필요) 같은 괄호 메모 제거
-    s = TIME_RE.sub(' ', s)
-    s = re.sub(r'(\d{4}-\d{1,2}-\d{1,2})|(\d{1,2}\s*[월/]\s*\d{1,2})', ' ', s)
-    for tk in sorted(ptoks, key=len, reverse=True):
-        s = s.replace(tk, ' ')
-    s = re.sub(r'[/·,]', ' ', s)
-    return re.sub(r'\s+', ' ', s).strip()
-
-
-def 지시처리(본문, dry_run=False):
-    """번호 목록 '오늘 지시' → 각 줄을 기존 과업에 매칭해 다음할일·기한·공위치 갱신, 못 찾으면 새 과업."""
-    d = json.loads(urllib.request.urlopen(READ + "?key=" + KEY, timeout=40).read())
-    rows = d['sheets'].get('과업')
-    if not rows or len(rows) < 2:
-        return ([], []) if dry_run else 답장("⚠️ 과업 시트를 못 읽었어요")
-    head = [str(h) for h in rows[0]]
-    pi, ci = head.index('프로젝트'), head.index('고객')
-    data = [r for r in rows[1:] if any(str(c).strip() for c in r)]
-    if len(data) < 5:   # 안전장치: 비정상적으로 적게 읽히면 중단(대량 유실 방지)
-        return ([], []) if dry_run else 답장("⚠️ 과업이 %d건만 읽혀 저장을 막았어요(읽기 오류). 잠시 후 다시." % len(data))
-    tasks = []
-    for r in data:
-        pj = str(r[pi]) if pi < len(r) else ''
-        cl = str(r[ci]) if ci < len(r) else ''
-        kws = set(t for t in re.split(r'[\s·]+', pj + ' ' + cl) if len(t) >= 2)
-        tasks.append({'r': r, 'pj': pj, 'cl': cl, 'kws': kws})
-    lines = [re.sub(r'^\s*\d+\s*[.)]\s*', '', l).strip() for l in 본문.splitlines() if l.strip()]
-    결과, 신규 = [], []
-    for line in lines:
-        due = _parse_due(line)
-        toks = [w for w in re.split(r'[\s/·]+', line) if len(w) >= 2]
-        matched = []
-        for t in tasks:
-            blob = t['pj'] + ' ' + t['cl']
-            if any(k in line for k in t['kws']) or any(w in blob for w in toks):
-                matched.append(t)
-        split_note = ("쪼개" in line)
-        if matched:
-            ptoks = set()
-            for t in matched:
-                ptoks |= t['kws']
-            action = _clean_action(line, ptoks)
-            for t in matched:
-                t['_next'] = action
-                t['_due'] = due
-                t['_status'] = line   # 형이 쓴 원문 그대로(메모·맥락 보존) → 현재상태
-                결과.append((t['pj'].split()[0] if t['pj'].split() else t['pj'], action, due, split_note))
-        else:
-            action = _clean_action(line, set())
-            tk = action.split()
-            if tk:
-                신규.append({'프로젝트': tk[0], '과업명': ' '.join(tk[1:]) or tk[0], '기한': due})
-                결과.append((tk[0] + '(신규)', ' '.join(tk[1:]), due, split_note))
-    if dry_run:
-        return 결과, 신규
-    # 쓰기: matched 갱신 + 신규 추가 → 한 번에 덮어쓰기
-    행들 = []
-    for t in tasks:
-        r = t['r']
-        row = [_norm(r[head.index(h)] if head.index(h) < len(r) else '') for h in HEADER]
-        if '_next' in t:
-            if t['_next']:
-                row[HEADER.index('다음할일')] = t['_next']
-            if t.get('_status'):
-                row[HEADER.index('현재상태')] = t['_status']   # 원문 메모 보존
-            if t['_due']:
-                row[HEADER.index('기한')] = t['_due']
-            row[HEADER.index('공위치')] = '내작업'
-            row[HEADER.index('갱신일')] = _today()
-        행들.append(row)
-    for i, n in enumerate(신규):
-        새 = {'id': 'L' + datetime.now(서울).strftime('%y%m%d%H%M%S') + str(i), '프로젝트': n['프로젝트'], '과업명': n['과업명'],
-              '담당자': '신종호', '공위치': '내작업', '현재상태': '', '다음할일': n['과업명'], '기한': n.get('기한', ''),
-              '고객': n['프로젝트'], '돈종류': '매출', '할일': '', '판정근거': '', '갱신일': _today(), '출처': '라크지시', '계약여부': ''}
-        행들.append([새.get(h, '') for h in HEADER])
-    _post(WRITE, {"key": KEY, "종류": "과업", "헤더": HEADER, "행들": 행들,
-                  "드롭다운": {"공위치": 공위치_LIST, "돈종류": ["매출", "투자"]}, "덮어쓰기": True})
-    줄 = []
-    for pj, act, due, note in 결과:
-        때 = (" · " + due) if due else ""
-        줄.append("• %s: %s%s%s" % (pj, act or "(확인)", 때, " ⚠️쪼개기필요" if note else ""))
-    답장("✅ 오늘 지시 %d건 반영\n%s\n매칭 맞나요? 틀리면 고쳐 보내세요." % (len(결과), "\n".join(줄)))
-
-
 def 과업메시지처리(본문):
     본문 = (본문 or "").strip()
     if not 본문:
         return
-    # 여러 줄(번호 목록) = "오늘 지시" → 일괄 처리
-    if len([l for l in 본문.splitlines() if l.strip()]) >= 2:
-        return 지시처리(본문)
     토큰 = 본문.split()
     프로젝트 = 토큰[0]
     공위치 = _공위치_찾기(본문)
