@@ -8,6 +8,7 @@
 import json
 import lark as 라크          # 우리 도구 (메시지보내기, 설정읽기, 처리기록 등)
 import 처리
+import 매출해석
 import lark_oapi
 
 
@@ -69,7 +70,11 @@ def 메시지왔을때(data):
         if chat_id == 설정.get("chat_id"):
             처리.일정메시지처리(토큰, chat_id, 본문, 설정.get("trigger", ""))
         elif "지출" in 설정 and chat_id == 설정["지출"].get("chat_id"):
-            처리.지출메시지처리(토큰, 설정["지출"], 본문)
+            # 같은 지출방: '입금'/'매출' 글이면 매출 칸에 입금으로, 아니면 지출로 기록
+            if "자금" in 설정 and 매출해석.매출글인가(본문):
+                처리.매출메시지처리(토큰, 설정["지출"], 설정["자금"], 본문)
+            else:
+                처리.지출메시지처리(토큰, 설정["지출"], 본문)
         elif "견적서" in 설정 and chat_id == 설정["견적서"].get("chat_id"):
             처리.견적서메시지처리(토큰, 설정["견적서"], 본문)
         elif "과업" in 설정 and chat_id == 설정["과업"].get("chat_id"):

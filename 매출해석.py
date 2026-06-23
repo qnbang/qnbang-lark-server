@@ -1,0 +1,72 @@
+# -*- coding: utf-8 -*-
+"""
+라크 지출방에 '입금'/'매출'이 들어간 글을 '매출 입금'으로 해석합니다.
+  "봉밀가 88만 입금"      -> {ok:True, 입금액:880000, 날짜:"2026/06/23", 힌트:"봉밀가"}
+  "어제 밀키트 880000 입금" -> {ok:True, 입금액:880000, 날짜:"2026/06/22", 힌트:"밀키트"}
+
+전제: 사장님이 말하는 금액은 '무조건 부가세 포함 총액' → 입금액 칸에 그대로 넣는다.
+계약 찾기·시트 기록은 처리.매출메시지처리가 한다. 여기선 글만 분해한다.
+금액 파서는 지출해석._금액파싱을 그대로 재사용(같은 규칙).
+"""
+
+import re
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+from 지출해석 import _금액파싱
+
+서울 = ZoneInfo("Asia/Seoul")
+
+# 이 단어가 글에 있으면 '매출 입금' 글로 본다 (실시간.py 분기 기준과 동일하게 유지)
+매출트리거 = ["입금", "매출", "수금", "받았", "들어옴", "들어왔"]
+
+
+def 매출글인가(본문):
+    return any(t in 본문 for t in 매출트리거)
+
+
+def 해석(원문):
+    남은 = " " + 원문.strip() + " "
+
+    # ---- 날짜 (기본 오늘) ----
+    오늘 = datetime.now(서울).date()
+    날짜 = 오늘
+    for 말, d in [("그저께", 2), ("그제", 2), ("어제", 1), ("오늘", 0), ("금일", 0)]:
+        if 말 in 남은:
+            날짜 = 오늘 - timedelta(days=d)
+            남은 = 남은.replace(말, " ", 1)
+            break
+    else:
+        m = re.search(r'(\d{1,2})\s*월\s*(\d{1,2})\s*일?', 남은)
+        if m:
+            try:
+                날짜 = datetime(오늘.year, int(m.group(1)), int(m.group(2))).date()
+                남은 = 남은[:m.start()] + " " + 남은[m.end():]
+            except ValueError:
+                pass
+
+    # ---- 트리거 단어는 힌트에서 빼둔다 ----
+    for t in 매출트리거:
+        남은 = 남은.replace(t, " ")
+
+    # ---- 금액(부가세 포함 총액) ----
+    입금액, span = _금액파싱(남은)
+    if 입금액 is None:
+        return {"ok": False, "이유": "금액이 안 보여요"}
+    남은 = 남은[:span[0]] + " " + 남은[span[1]:]
+
+    # ---- 계약 힌트 (남은 글자) ----
+    힌트 = re.sub(r'[\s·\-,원]+', ' ', 남은).strip()
+
+    return {
+        "ok": True,
+        "날짜": "%04d/%02d/%02d" % (날짜.year, 날짜.month, 날짜.day),
+        "입금액": 입금액,
+        "힌트": 힌트,
+    }
+
+
+if __name__ == "__main__":
+    import json
+    for e in ["봉밀가 88만 입금", "어제 밀키트 880000 입금", "한솔홀딩스 ESG 200만 매출",
+              "마마파이낸스 330만 입금", "그냥 잡담", "오늘 점프 키비주얼 236만5천 수금"]:
+        print(e, "->", json.dumps(해석(e), ensure_ascii=False))

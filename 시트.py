@@ -39,3 +39,33 @@ def 합계읽기(엔드포인트, key):
         return 월별
     except Exception:
         return {}
+
+
+def 탭읽기(엔드포인트, key, 탭명):
+    """지정 탭을 행 배열(첫 행=헤더)로 읽어옵니다. 실패 시 []."""
+    try:
+        with urllib.request.urlopen(엔드포인트 + "?key=" + key, timeout=25) as resp:
+            데이터 = json.loads(resp.read().decode("utf-8"))
+        return 데이터.get("sheets", {}).get(탭명, [])
+    except Exception:
+        return []
+
+
+def 매칭수정(자금엔드포인트, key, 종류, 매칭, 값):
+    """자금기록기 웹앱에 '매칭수정' POST → 매칭 칸값으로 행 찾아 지정 칸만 갱신.
+    매칭 예: {"계약명":"...","계약금액":880000}  값 예: {"입금일":"...","입금액":880000,"입금상태":"입금완료"}
+    응답 JSON(dict) 반환. 실패 시 {'ok':False,'error':...}. (urllib만 사용 — curl -L은 302에서 깨짐)"""
+    본문 = {"key": key, "종류": 종류, "매칭수정": {"매칭": 매칭, "값": 값}}
+    데이터 = json.dumps(본문, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(자금엔드포인트, data=데이터,
+                                 headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        try:
+            return json.loads(e.read().decode("utf-8"))
+        except Exception:
+            return {"ok": False, "error": "HTTPError"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
