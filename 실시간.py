@@ -36,6 +36,19 @@ def _텍스트뽑기(content):
     return " ".join(모음).strip()
 
 
+def _첨부뽑기(content, msg_type):
+    """파일/이미지 메시지에서 (file_key, 파일명, 종류)를 뽑는다. 첨부 아니면 (None, '', 'file')."""
+    try:
+        d = json.loads(content or "{}")
+    except Exception:
+        return None, "", "file"
+    if msg_type == "file":
+        return d.get("file_key"), d.get("file_name", "계약서.pdf"), "file"
+    if msg_type == "image":
+        return d.get("image_key"), "계약서.jpg", "image"
+    return None, "", "file"
+
+
 def _이미처리(글ID):
     return 글ID in set(라크.처리기록읽기())
 
@@ -60,12 +73,24 @@ def 메시지왔을때(data):
         if _이미처리(글ID):
             return
 
+        토큰 = 라크.토큰받기(설정)
+        chat_id = msg.chat_id
+        msg_type = getattr(msg, "message_type", "")
+
+        # 매출/지출 방에 계약서 파일(PDF·사진)을 올리면 → AI로 읽어 매출/정기매출 등록
+        if ("지출" in 설정 and chat_id == 설정["지출"].get("chat_id")
+                and msg_type in ("file", "image")):
+            file_key, 파일명, 파일종류 = _첨부뽑기(msg.content, msg_type)
+            if file_key:
+                계약서설정 = {"gemini": 설정.get("견적서", {}).get("gemini")}
+                처리.계약서메시지처리(토큰, 계약서설정, 설정.get("자금"),
+                                chat_id, 글ID, file_key, 파일명, 파일종류)
+                _처리표시(글ID)
+            return
+
         본문 = _텍스트뽑기(msg.content)
         if not 본문:
             return
-
-        토큰 = 라크.토큰받기(설정)
-        chat_id = msg.chat_id
 
         if chat_id == 설정.get("chat_id"):
             처리.일정메시지처리(토큰, chat_id, 본문, 설정.get("trigger", ""))
@@ -84,7 +109,8 @@ def 메시지왔을때(data):
             과업설정.setdefault("gemini", 설정.get("견적서", {}).get("gemini"))
             과업해석.과업메시지처리(본문, 과업설정, sender_open)
         else:
-            return  # 우리가 쓰는 방이 아니면 무시
+            print("미등록방 chat_id:", chat_id, "|", 본문[:20])  # 새 방 등록용
+            return
 
         _처리표시(글ID)
         print("처리:", chat_id[-6:], 본문[:30])

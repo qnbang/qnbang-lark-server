@@ -208,6 +208,28 @@ def 메시지보내기(토큰, chat_id, 내용):
     return 결과
 
 
+def 파일다운로드(토큰, message_id, file_key, 종류="file"):
+    """라크 메시지의 첨부 파일/이미지를 바이트로 받는다. (종류: file | image)"""
+    url = (도메인 + "/open-apis/im/v1/messages/%s/resources/%s?type=%s"
+           % (message_id, file_key, 종류))
+    req = urllib.request.Request(url, headers={"Authorization": "Bearer " + 토큰}, method="GET")
+    with urllib.request.urlopen(req) as resp:
+        return resp.read()
+
+
+def 웹훅보내기(웹훅url, text):
+    """무료 사용자지정봇 웹훅으로 텍스트 전송(봇 API 월 한도와 무관)."""
+    데이터 = json.dumps({"msg_type": "text", "content": {"text": text}},
+                      ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(웹훅url, data=데이터,
+                                 headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        return {"error": str(e)}
+
+
 def main():
     명령 = sys.argv[1] if len(sys.argv) > 1 else "연결확인"
     설정 = 설정읽기()
