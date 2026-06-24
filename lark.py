@@ -189,7 +189,25 @@ def 파일보내기(토큰, chat_id, 파일바이트, 파일명):
     )
 
 
+def _chat웹훅(설정, chat_id):
+    """그 방에 달린 무료 웹훅 URL을 찾는다(없으면 None). 봇 API 월 한도 우회용."""
+    if chat_id and chat_id == 설정.get("chat_id"):
+        return 설정.get("브리핑_webhook")
+    for k in ("지출", "견적서", "과업"):
+        v = 설정.get(k) or {}
+        if v.get("chat_id") == chat_id and v.get("webhook"):
+            return v["webhook"]
+    return None
+
+
 def 메시지보내기(토큰, chat_id, 내용):
+    # 그 방에 무료 웹훅이 있으면 웹훅으로 보낸다(봇 API 월 한도와 무관). 없으면 봇 API.
+    try:
+        웹훅 = _chat웹훅(설정읽기(), chat_id)
+    except Exception:
+        웹훅 = None
+    if 웹훅:
+        return 웹훅보내기(웹훅, 내용)
     본문 = {
         "receive_id": chat_id,
         "msg_type": "text",
