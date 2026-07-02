@@ -110,7 +110,9 @@ def _norm(v):
 
 
 def 공위치변경(프로젝트, 공위치, 현재상태=None):
-    """프로젝트명으로 기존 과업 찾아 공위치(+현재상태) 변경(read→덮어쓰기). 변경 건수 반환."""
+    """프로젝트명으로 기존 과업 찾아 공위치(+현재상태) 변경(read→덮어쓰기). 변경 건수 반환.
+    ⚠️ 덮어쓰기는 반드시 실제 시트 헤더(head) 전체 폭으로 — HEADER(15칸)로 자르면 분류·메모·저장소가 매번 날아감(대시보드 complete와 동일 규칙).
+    완수는 과업 탭에 남기면 화면 어디에도 안 보여(증발) 아카이브 탭으로 옮긴다."""
     d = json.loads(urllib.request.urlopen(READ + "?key=" + KEY, timeout=40).read())
     rows = d['sheets'].get('과업')
     if not rows or len(rows) < 2:
@@ -123,20 +125,26 @@ def 공위치변경(프로젝트, 공위치, 현재상태=None):
         return 0, []
     매치 = []
     행들 = []
+    완수행들 = []
     for r in data:
-        row = [_norm(r[head.index(h)] if head.index(h) < len(r) else '') for h in HEADER]
+        row = [_norm(r[i] if i < len(r) else '') for i in range(len(head))]
         pj = str(r[pi]) if pi < len(r) else ''
         if 프로젝트 in pj or (pj and pj.split()[0] == 프로젝트):
-            row[HEADER.index('공위치')] = 공위치
+            row[head.index('공위치')] = 공위치
             if 현재상태:
-                row[HEADER.index('현재상태')] = 현재상태
-            row[HEADER.index('갱신일')] = _today()
+                row[head.index('현재상태')] = 현재상태
+            row[head.index('갱신일')] = _today()
             매치.append(pj)
+            if 공위치 == '완수':
+                완수행들.append({h: row[i] for i, h in enumerate(head)})
+                continue  # 과업 탭에서 빼고 아카이브로
         행들.append(row)
     if not 매치:
         return 0, []
-    _post(WRITE, {"key": KEY, "종류": "과업", "헤더": HEADER, "행들": 행들,
+    _post(WRITE, {"key": KEY, "종류": "과업", "헤더": head, "행들": 행들,
                   "드롭다운": {"공위치": 공위치_LIST, "돈종류": ["매출", "투자"]}, "덮어쓰기": True})
+    for 행 in 완수행들:
+        _post(WRITE, {"key": KEY, "종류": "아카이브", "헤더": HEADER, "행": 행})
     return len(매치), 매치
 
 
