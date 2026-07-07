@@ -7,24 +7,34 @@
 import json
 import urllib.request
 import urllib.error
+import 공용
 
 
 def 기록(엔드포인트, key, 항목):
-    """항목 예: {"날짜":"2026/06/05","카테고리":"식비","지출 내용":"스타벅스","비용":5500,"비고":"카드","과업 관리":""}"""
+    """지출 한 줄을 기록한다. 항목 예: {"날짜":"2026/06/05","카테고리":"식비", ...}
+    기록에 성공하면 True, 서버까지 못 닿거나(네트워크·타임아웃) 실패면 예외를 올린다.
+    → 호출부가 그 실패를 사용자에게 알릴 수 있다(예전엔 실패를 삼켜 '기록됨'이 잘못 나갔음).
+    Apps Script 특성상 302/405로도 실제 기록되므로 HTTPError(응답은 왔음)는 성공으로 본다."""
     본문 = dict(항목)
     본문["key"] = key
     데이터 = json.dumps(본문, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(
-        엔드포인트, data=데이터,
-        headers={"Content-Type": "application/json"}, method="POST",
-    )
-    # Apps Script는 302/405 등으로 응답해도 실제로는 기록됨. 오류 떠도 통과시킴.
-    try:
-        urllib.request.urlopen(req, timeout=25)
-    except urllib.error.HTTPError:
-        pass
-    except Exception:
-        pass
+
+    def _보내기():
+        req = urllib.request.Request(
+            엔드포인트, data=데이터,
+            headers={"Content-Type": "application/json"}, method="POST",
+        )
+        try:
+            urllib.request.urlopen(req, timeout=25)
+        except urllib.error.HTTPError:
+            # 서버가 302/405 등으로 응답 — Apps Script는 이래도 실제로는 기록됨. 성공 취급.
+            pass
+        return True
+
+    # 네트워크·타임아웃 등 '서버에 못 닿은' 실패만 재시도. 끝까지 실패하면 예외를 그대로 올린다.
+    공용.재시도(_보내기, 다시시도예외=(urllib.error.URLError, TimeoutError, OSError))
+    공용.로그().info("지출 기록 %s / %s원", 항목.get("지출 내용", ""), 항목.get("비용", ""))
+    return True
 
 
 def 합계읽기(엔드포인트, key):
@@ -58,17 +68,24 @@ def 행추가(자금엔드포인트, key, 종류, 행배열, 헤더=None):
     if 헤더:
         본문["헤더"] = 헤더
     데이터 = json.dumps(본문, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(자금엔드포인트, data=데이터,
-                                 headers={"Content-Type": "application/json"}, method="POST")
-    try:
+
+    def _보내기():
+        req = urllib.request.Request(자금엔드포인트, data=데이터,
+                                     headers={"Content-Type": "application/json"}, method="POST")
         with urllib.request.urlopen(req, timeout=30) as resp:
             return json.loads(resp.read().decode("utf-8"))
+
+    try:
+        # 네트워크·타임아웃만 재시도. HTTPError(응답은 옴)는 재시도 말고 본문을 읽어 그대로 반환.
+        return 공용.재시도(_보내기, 다시시도예외=(urllib.error.URLError, TimeoutError, OSError),
+                        제외예외=(urllib.error.HTTPError,))
     except urllib.error.HTTPError as e:
         try:
             return json.loads(e.read().decode("utf-8"))
         except Exception:
             return {"ok": False, "error": "HTTPError"}
     except Exception as e:
+        공용.로그().warning("행추가 실패: %s", e)
         return {"ok": False, "error": str(e)}
 
 
@@ -78,15 +95,22 @@ def 매칭수정(자금엔드포인트, key, 종류, 매칭, 값):
     응답 JSON(dict) 반환. 실패 시 {'ok':False,'error':...}. (urllib만 사용 — curl -L은 302에서 깨짐)"""
     본문 = {"key": key, "종류": 종류, "매칭수정": {"매칭": 매칭, "값": 값}}
     데이터 = json.dumps(본문, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(자금엔드포인트, data=데이터,
-                                 headers={"Content-Type": "application/json"}, method="POST")
-    try:
+
+    def _보내기():
+        req = urllib.request.Request(자금엔드포인트, data=데이터,
+                                     headers={"Content-Type": "application/json"}, method="POST")
         with urllib.request.urlopen(req, timeout=30) as resp:
             return json.loads(resp.read().decode("utf-8"))
+
+    try:
+        # 네트워크·타임아웃만 재시도. HTTPError(응답은 옴)는 재시도 말고 본문을 읽어 그대로 반환.
+        return 공용.재시도(_보내기, 다시시도예외=(urllib.error.URLError, TimeoutError, OSError),
+                        제외예외=(urllib.error.HTTPError,))
     except urllib.error.HTTPError as e:
         try:
             return json.loads(e.read().decode("utf-8"))
         except Exception:
             return {"ok": False, "error": "HTTPError"}
     except Exception as e:
+        공용.로그().warning("매칭수정 실패: %s", e)
         return {"ok": False, "error": str(e)}

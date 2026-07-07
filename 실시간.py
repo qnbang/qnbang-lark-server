@@ -10,6 +10,7 @@ import lark as 라크          # 우리 도구 (메시지보내기, 설정읽기
 import 처리
 import 매출해석
 import lark_oapi
+import 공용
 
 
 def _텍스트뽑기(content):
@@ -93,7 +94,7 @@ def 메시지왔을때(data):
             return
 
         if chat_id == 설정.get("chat_id"):
-            처리.일정메시지처리(토큰, chat_id, 본문, 설정.get("trigger", ""))
+            처리.일정메시지처리(토큰, chat_id, 본문, 설정.get("trigger", ""), 글ID=글ID)
         elif "지출" in 설정 and chat_id == 설정["지출"].get("chat_id"):
             # 같은 지출방: '입금'/'매출' 글이면 매출 칸에 입금으로, 아니면 지출로 기록
             if "자금" in 설정 and 매출해석.매출글인가(본문):
@@ -113,8 +114,10 @@ def 메시지왔을때(data):
             return
 
         _처리표시(글ID)
+        공용.로그().info("처리 chat=%s msg=%s 본문=%s", chat_id[-6:], 글ID, 본문[:30])
         print("처리:", chat_id[-6:], 본문[:30])
     except Exception as e:
+        공용.로그().exception("처리 오류")
         print("처리 오류:", e)
 
 

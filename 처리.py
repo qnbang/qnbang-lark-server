@@ -18,6 +18,7 @@ import json
 import 견적서해석
 import 견적서AI해석
 import 견적서생성
+import 공용
 
 요일이름 = ["월", "화", "수", "목", "금", "토", "일"]
 
@@ -37,7 +38,7 @@ def _완료문구(결과):
     return "✅ 등록됨 — %s / %s (큐앤뱅 캘린더)" % (결과["제목"], 때)
 
 
-def 일정메시지처리(토큰, chat_id, 본문, 트리거=""):
+def 일정메시지처리(토큰, chat_id, 본문, 트리거="", 글ID=None):
     if 트리거 and not 본문.startswith(트리거):
         return False
     if not 본문:
@@ -68,10 +69,11 @@ def 일정메시지처리(토큰, chat_id, 본문, 트리거=""):
     try:
         calendar_api.일정등록(
             결과["제목"], 결과["시작"], 결과["끝"],
-            종일=결과["종일"], 설명="라크 일정방에서 자동 등록됨",
+            종일=결과["종일"], 설명="라크 일정방에서 자동 등록됨", 글ID=글ID,
         )
         lark.메시지보내기(토큰, chat_id, _완료문구(결과))
     except Exception as e:
+        공용.로그().exception("일정 등록 실패 글ID=%s 본문=%s", 글ID, 본문[:40])
         lark.메시지보내기(토큰, chat_id, "⚠️ '%s' 처리 중 문제가 생겼어요: %s" % (본문, e))
     return True
 

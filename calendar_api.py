@@ -7,6 +7,8 @@ import os
 import json
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+import 공용
 
 기준폴더 = os.path.dirname(os.path.abspath(__file__))
 열쇠파일 = os.path.join(기준폴더, "google-key.json")
@@ -34,7 +36,12 @@ def 서비스():
     return build("calendar", "v3", credentials=인증, cache_discovery=False)
 
 
-def 일정등록(제목, 시작ISO, 끝ISO, 종일=False, 설명=""):
+def 일정등록(제목, 시작ISO, 끝ISO, 종일=False, 설명="", 글ID=None):
+    """일정을 구글 캘린더에 등록한다.
+    글ID를 주면 그걸 해시해 이벤트 id로 고정한다(멱등 등록) — 같은 글이 재전송되거나
+    등록 직후 프로세스가 죽었다 다시 처리돼도 같은 id라 중복 등록되지 않는다.
+    이미 있으면 캘린더가 409를 주는데, 그걸 '이미 등록됨'으로 조용히 넘긴다.
+    일시적 네트워크·서버 오류는 몇 번 재시도한다."""
     설정 = 설정읽기()
     cal = 설정["calendar_id"]
     tz = 설정.get("time_zone", "Asia/Seoul")
@@ -52,7 +59,22 @@ def 일정등록(제목, 시작ISO, 끝ISO, 종일=False, 설명=""):
             "start": {"dateTime": 시작ISO, "timeZone": tz},
             "end": {"dateTime": 끝ISO, "timeZone": tz},
         }
-    결과 = 서비스().events().insert(calendarId=cal, body=본문).execute()
+    if 글ID:
+        본문["id"] = 공용.이벤트해시(글ID)
+
+    def _등록():
+        return 서비스().events().insert(calendarId=cal, body=본문).execute()
+
+    try:
+        # 409(중복)는 재시도 대상이 아니다 → 아래 except HttpError에서 따로 처리하도록,
+        # 재시도는 그 외 예외에만 걸리게 한다.
+        결과 = 공용.재시도(_등록, 다시시도예외=(ConnectionError, TimeoutError, OSError))
+    except HttpError as e:
+        if 글ID and getattr(e, "resp", None) is not None and e.resp.status == 409:
+            공용.로그().info("캘린더 이미등록(409) 글ID=%s 제목=%s", 글ID, 제목)
+            return {"중복": True}          # 이미 등록됨 — 조용히 성공 취급
+        raise
+    공용.로그().info("캘린더 등록 글ID=%s 제목=%s", 글ID, 제목)
     return 결과
 
 
