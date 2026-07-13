@@ -3,9 +3,9 @@
 서버 헬스체크 + 라크 알림 (5분마다 cron 실행)
 
 하는 일:
-  - 핵심 서비스(lark-realtime · board)가 살아있는지 확인
-  - 보드 웹(7777 포트)이 실제로 응답하는지 확인
+  - 핵심 서비스(lark-realtime)가 살아있는지 확인
   - 디스크가 꽉 차가는지 확인
+  (옛 board/7777 감시는 2026-06-25 폐기, 잔재 코드는 2026-07-13 제거)
   - 문제가 생기면 '무료 라크 웹훅'으로 폰에 알림(브리핑이 쓰는 그 웹훅 재사용)
 
 스팸 방지:
@@ -37,8 +37,6 @@ import lark  # 설정읽기() · 웹훅 재사용
 
 # 검사할 systemd 서비스
 서비스목록 = ["lark-realtime"]  # board(7777)는 폐기(2026-06-25) — 신규 대시보드로 이전, 감시 제외
-# 보드 웹 응답 확인 주소(서버 안에서 자기 자신 호출)
-보드주소 = "http://127.0.0.1:7777/"
 # 디스크 경고 기준(%)
 디스크경고 = 90
 
@@ -70,22 +68,6 @@ def 서비스살았나(이름, 시도=2, 간격=2):
             )
             if 결과.stdout.strip() == "active":
                 return True
-        except Exception:
-            pass
-        if i < 시도 - 1:
-            time.sleep(간격)
-    return False
-
-
-def 보드응답하나(시도=3, 간격=2):
-    """보드웹이 응답하면 True. 작은 VM의 일시적 지연(오탐) 방지를 위해 여러 번 시도.
-    진짜 장애는 계속 실패하므로 그대로 잡힌다."""
-    for i in range(시도):
-        try:
-            요청 = urllib.request.Request(보드주소, method="GET")
-            with urllib.request.urlopen(요청, timeout=10) as 응답:
-                if 200 <= 응답.status < 400:
-                    return True
         except Exception:
             pass
         if i < 시도 - 1:
