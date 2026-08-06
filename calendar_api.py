@@ -88,6 +88,40 @@ def 일정목록(시작ISO, 끝ISO):
     return 결과.get("items", [])
 
 
+def 일정수정(이벤트ID, 제목, 시작ISO, 끝ISO, 종일=False, 설명=""):
+    """이벤트ID가 가리키는 일정 한 건을 수정한다."""
+    설정 = 설정읽기()
+    tz = 설정.get("time_zone", "Asia/Seoul")
+    본문 = {"summary": 제목, "description": 설명}
+    if 종일:
+        본문["start"] = {"date": 시작ISO}
+        본문["end"] = {"date": 끝ISO}
+    else:
+        본문["start"] = {"dateTime": 시작ISO, "timeZone": tz}
+        본문["end"] = {"dateTime": 끝ISO, "timeZone": tz}
+
+    결과 = 공용.재시도(
+        lambda: 서비스().events().patch(
+            calendarId=설정["calendar_id"], eventId=이벤트ID, body=본문
+        ).execute(),
+        다시시도예외=(ConnectionError, TimeoutError, OSError),
+    )
+    공용.로그().info("캘린더 수정 event=%s 제목=%s", 이벤트ID, 제목)
+    return 결과
+
+
+def 일정삭제(이벤트ID):
+    """이벤트ID가 가리키는 일정 한 건을 삭제한다."""
+    설정 = 설정읽기()
+    공용.재시도(
+        lambda: 서비스().events().delete(
+            calendarId=설정["calendar_id"], eventId=이벤트ID
+        ).execute(),
+        다시시도예외=(ConnectionError, TimeoutError, OSError),
+    )
+    공용.로그().info("캘린더 삭제 event=%s", 이벤트ID)
+
+
 if __name__ == "__main__":
     # 연결 테스트: 내일 오후 3시에 테스트 일정 하나 넣어봅니다.
     r = 일정등록(

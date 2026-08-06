@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import lark
 import parse_schedule
 import calendar_api
+import 일정편집
 import 질의
 import 지출해석
 import 매출해석
@@ -43,6 +44,12 @@ def 일정메시지처리(토큰, chat_id, 본문, 트리거="", 글ID=None):
         return False
     if not 본문:
         return False
+
+    # 수정·삭제는 등록/조회보다 먼저 판별한다. 삭제는 별도 확인을 거친다.
+    편집됨, 답장 = 일정편집.처리(본문, chat_id)
+    if 편집됨:
+        lark.메시지보내기(토큰, chat_id, 답장)
+        return True
 
     # '이번 주 일정 알려줘' 같은 물어보는 글
     if 질의.질의인가(본문):
