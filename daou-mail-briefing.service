@@ -1,0 +1,17 @@
+[Unit]
+Description=Daou Office mail to Lark task briefing
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=charlie
+WorkingDirectory=/home/charlie/lark-calendar
+Environment=PYTHONUTF8=1
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/charlie/lark-calendar/venv/bin/python /home/charlie/lark-calendar/메일수신.py
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target
