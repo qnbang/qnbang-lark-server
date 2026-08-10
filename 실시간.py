@@ -11,6 +11,7 @@ import 처리
 import 매출해석
 import lark_oapi
 import 공용
+import 운영수신
 
 
 def _텍스트뽑기(content):
@@ -92,6 +93,17 @@ def 메시지왔을때(data):
         본문 = _텍스트뽑기(msg.content)
         if not 본문:
             return
+
+        등록된방 = {
+            설정.get("chat_id"),
+            설정.get("지출", {}).get("chat_id"),
+            설정.get("견적서", {}).get("chat_id"),
+            설정.get("과업", {}).get("chat_id"),
+        }
+        if chat_id in 등록된방:
+            sender = getattr(getattr(ev.sender, "sender_id", None), "open_id", "") or "라크 사용자"
+            received_at = str(getattr(msg, "create_time", "") or "")
+            운영수신.라크원문기록(설정, 글ID, sender, 본문, received_at)
 
         if chat_id == 설정.get("chat_id"):
             처리.일정메시지처리(토큰, chat_id, 본문, 설정.get("trigger", ""), 글ID=글ID)
