@@ -75,6 +75,11 @@ def 메시지왔을때(data):
         if _이미처리(글ID):
             return
 
+        # 판매왕 보고방은 별도 대기열로 접수한다. 기존 업무방 흐름은 유지한다.
+        import 판매왕대화
+        if 판매왕대화.receive(ev):
+            return
+
         토큰 = 라크.토큰받기(설정)
         chat_id = msg.chat_id
         msg_type = getattr(msg, "message_type", "")
