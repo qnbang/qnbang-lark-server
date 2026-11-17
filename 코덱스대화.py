@@ -128,6 +128,21 @@ def rpc(r):
         elif action=='status':
             return {'jobs':[dict(x) for x in c.execute('SELECT mid,status,updated FROM jobs ORDER BY created DESC LIMIT 10')],'rooms':[dict(x) for x in c.execute('SELECT * FROM rooms')]}
         else:raise ValueError('알 수 없는 요청')
+    import 라크파일전송
+    files=r.get('files',[])
+    if files:
+        import lark
+        try:
+            delivered=라크파일전송.deliver(r['mid'],files,db,api,lark.설정읽기(),STATE,CHAT)
+            answer='요청한 파일 '+str(len(delivered))+'개를 이 방에 첨부했어.\n'+'\n'.join(x['name'] for x in delivered)
+        except Exception as e:
+            answer='파일은 준비했지만 이 방에 첨부하지 못했어. '+str(e)
+            r['failed']=True
+    else:
+        if ':codex-file-citation{' in answer:
+            answer='결과 파일 표시가 있었지만 전송할 파일을 확보하지 못해 첨부하지 못했어.'
+            r['failed']=True
+        answer=라크파일전송.clean_answer(answer)
     try:reply(r['mid'],answer,'result:'+r['mid']);status='failed' if r.get('failed') else 'completed'
     except Exception:status='delivery_unknown'
     with db() as c:c.execute('UPDATE jobs SET status=?,updated=? WHERE mid=?',(status,time.time(),r['mid']))
