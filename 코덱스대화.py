@@ -43,8 +43,14 @@ def receive(ev):
     sender=getattr(getattr(ev.sender,'sender_id',None),'open_id','')
     if getattr(ev.sender,'sender_type','')!='user' or sender!=OWNER:return True
     mid=msg.message_id
+    if getattr(msg,'message_type','')=='interactive':
+        reply(mid,'전달한 메일 카드를 받았어. 이 방에서 원하는 작업을 말하면 메일 본문과 함께 읽고 처리할게.','mail-card:'+mid)
+        return True
+    if getattr(msg,'message_type','') in ('file','image'):
+        reply(mid,'첨부 자료를 받았어. 다음 작업 지시를 처리할 때 파일 원본도 함께 읽을게.','attachment:'+mid)
+        return True
     if getattr(msg,'message_type','') not in ('text','post'):
-        reply(mid,'첫 시험은 메일 본문과 작업 지시를 글로 보내줘. 첨부파일 자동 처리는 아직 연결하지 않았어.','unsupported:'+mid);return True
+        reply(mid,'이 메시지 형식은 아직 직접 읽지 못했어. 메일 카드·파일·이미지 또는 글로 보낸 자료를 처리할 수 있어.','unsupported:'+mid);return True
     content=json.loads(msg.content or '{}')
     def texts(o):
         if isinstance(o,dict):
@@ -68,6 +74,27 @@ def receive(ev):
     except Exception as e:print('접수 답장 오류',type(e).__name__,flush=True)
     return True
 
+def room_context(mid):
+    """사람의 지시 때만 방 기록을 한 번 조회한다. 봇 알림도 자료로 읽는다."""
+    from urllib.parse import urlencode
+    import lark
+    own_app=lark.설정읽기()['app_id']
+    query=urlencode({'container_id_type':'chat','container_id':CHAT,'sort_type':'ByCreateTimeDesc','page_size':50})
+    items=api('GET','/open-apis/im/v1/messages?'+query).get('items',[])
+    current=next((i for i,x in enumerate(items) if x.get('message_id')==mid),None)
+    if current is None:raise RuntimeError('현재 요청이 최근 기록 범위를 벗어나 맥락 확인 필요')
+    out=[];remaining=45000
+    for x in reversed(items[current+1:]):
+        sender=x.get('sender',{})
+        if x.get('msg_type')=='system' or sender.get('id')==own_app:continue
+        raw=x.get('body',{}).get('content','')
+        if not raw:continue
+        if len(raw)>remaining:raw=raw[:remaining]+' [내용 일부 생략]'
+        out.append({'message_id':x.get('message_id'),'message_type':x.get('msg_type'),'sender_type':sender.get('sender_type'),'content':raw})
+        remaining-=len(raw)
+        if remaining<=0:break
+    return out
+
 def rpc(r):
     action=r['action']
     with db() as c:
@@ -80,7 +107,14 @@ def rpc(r):
             j=dict(row);j['token']=uuid.uuid4().hex
             c.execute("UPDATE jobs SET status='running',token=?,updated=? WHERE mid=?",(j['token'],time.time(),j['mid']))
             j['session']=c.execute('SELECT session FROM rooms WHERE chat=?',(j['chat'],)).fetchone()[0]
+            try:j['room_context']=room_context(j['mid'])
+            except Exception as e:j['context_error']=str(e)
             return j
+        if action=='attachments':
+            job=c.execute('SELECT * FROM jobs WHERE mid=? AND token=?',(r['mid'],r['token'])).fetchone()
+            if not job or job['status']!='running':raise RuntimeError('첨부 조회 실행 소유권 불일치')
+            import 라크첨부,lark
+            return 라크첨부.prepare(room_context(job['mid']),lark.설정읽기(),STATE)
         if action in ('heartbeat','finish'):
             j=c.execute('SELECT * FROM jobs WHERE mid=? AND token=?',(r['mid'],r['token'])).fetchone()
             if not j:raise RuntimeError('실행 소유권 불일치')
