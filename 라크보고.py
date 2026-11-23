@@ -61,7 +61,10 @@ def ingest(events, *, source):
                 }[status]
                 description = e['summary'] or display
                 text = f"[{project}]\n{title}\n{display} · {description}\n{action}"
-                notify = status != 'running' and (old is None or old['status'] != status)
+                if status=='running' and old is None:
+                    text=f"[{project}]\n{title}\n작업을 시작했어요.\n완료하거나 답변이 필요하면 알려드릴게요."
+
+                notify = old is None or status != 'running' and old['status'] != status
                 if status == 'waiting' and old and old['status'] == 'waiting':
                     previous = c.execute('SELECT text FROM report_push WHERE key=?',
                                          (source+'-event:'+old['current_mid'],)).fetchone()

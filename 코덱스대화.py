@@ -273,7 +273,9 @@ def rpc(r):
         if action == 'claude_events':
             return 라크보고.ingest(r['events'],source='claude')
         if action == 'codex_events':
-            return 라크보고.ingest(r['events'],source='codex')
+            accepted=라크보고.ingest(r['events'],source='codex')
+            라크보고.send_pending()
+            return accepted
         return 라크보고.tick(test=r.get('test',False))
     with db() as c:
         if action=='claim':
