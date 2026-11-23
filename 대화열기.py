@@ -2,7 +2,6 @@
 import time
 import uuid
 import 코덱스대화 as room
-from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
 
 def database():
     c=room.db()
@@ -13,6 +12,7 @@ def database():
     return c
 
 def receive(data):
+    from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
     e=data.event
     actor=getattr(getattr(e,'operator',None),'open_id',None)
     context=getattr(e,'context',None)
@@ -61,3 +61,40 @@ def finish(payload):
         if not changed:
             raise RuntimeError('대화 열기 요청 소유권 불일치')
     return {'status':state}
+
+
+def stream():
+    """같은 SSH 연결에서 클릭 요청과 수신 확인을 이어받는다."""
+    import json
+    import sys
+    connection=database()
+    connection.isolation_level=None
+    try:
+        while True:
+            pending=connection.execute(
+                "SELECT 1 FROM open_requests WHERE state='pending' LIMIT 1").fetchone()
+            if not pending:
+                time.sleep(0.05)
+                continue
+            request=claim()
+            if not request:
+                continue
+            sys.stdout.write(json.dumps(request)+'\n')
+            sys.stdout.flush()
+            line=sys.stdin.readline()
+            if not line:
+                return
+            response=json.loads(line)
+            if response.get('id')!=request['id'] or response.get('token')!=request['token']:
+                raise RuntimeError('대화 열기 수신 확인 불일치')
+            finish(response)
+    finally:
+        connection.close()
+
+
+if __name__=='__main__':
+    import os
+    import sys
+    os.umask(0o077)
+    if sys.argv[1:]==['--stream']:
+        stream()
