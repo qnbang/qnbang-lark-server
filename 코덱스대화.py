@@ -238,7 +238,7 @@ def receive(ev):
         stop=body.strip() in ('중단','멈춰','작업 중단')
         if stop:c.execute("UPDATE jobs SET status=CASE WHEN status='running' THEN 'cancel_requested' ELSE 'cancelled' END WHERE chat=? AND status IN ('pending','running') AND mid NOT IN (SELECT mid FROM tracked_turns)",(CHAT,))
         c.execute('INSERT INTO jobs VALUES(?,?,?,?,?,NULL,?,NULL)',(mid,CHAT,body,'cancelled' if stop else 'pending',time.time(),time.time()))
-    try:reply(mid,'중단 요청했어.' if stop else '접수했어. 이 방의 앞선 대화를 이어서 처리할게.','ack:'+mid)
+    try:reply(mid,'중단을 요청했습니다.' if stop else '접수했습니다. 라크 작업방에 연결된 코덱스에서 처리한 뒤 이 방에 알려드리겠습니다.','ack:'+mid)
     except Exception as e:print('접수 답장 오류',type(e).__name__,flush=True)
     return True
 

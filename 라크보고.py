@@ -24,8 +24,13 @@ def ingest(events, *, source):
                 and e['status'] in STATES and TITLE.fullmatch(e['title'])
                 and re.fullmatch(r'[a-f0-9]{8}',e['session'])
                 and re.fullmatch(r'[가-힣a-zA-Z0-9 .,:!?()·-]{0,80}',e['summary'])
-                and re.fullmatch(r'[가-힣a-zA-Z0-9 .,:!?()·-]{0,45}',e.get('label',''))):
+                and re.fullmatch(r'[가-힣a-zA-Z0-9 .,:!?()·-]{0,45}',e.get('label',''))
+                and re.fullmatch(r'[가-힣a-zA-Z0-9 .,:!?()·-]{0,45}',e.get('project',''))
+                and re.fullmatch(r'[가-힣a-zA-Z0-9 .,:!?()·-]{0,80}',e.get('action',''))
+                and re.fullmatch(r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}',e.get('thread','00000000-0000-0000-0000-000000000000'))):
             raise ValueError('클로드 작업 보고 형식 오류')
+    with room.db() as c:
+        c.execute('CREATE TABLE IF NOT EXISTS report_origins(key TEXT PRIMARY KEY,thread TEXT NOT NULL,task_id TEXT NOT NULL)')
     received = []
     with room.db() as c:
         c.execute('BEGIN IMMEDIATE')
@@ -33,6 +38,8 @@ def ingest(events, *, source):
             task_id = source + ':' + e['task']
             key = source + '-event:' + e['id']
             received.append(e['id'])
+            if source == 'codex' and e.get('thread'):
+                c.execute('INSERT OR IGNORE INTO report_origins VALUES(?,?,?)',(key,e['thread'],task_id))
             if c.execute('SELECT 1 FROM report_push WHERE key=?',(key,)).fetchone():
                 continue
             old = c.execute('SELECT title,status,current_mid FROM tracked_tasks WHERE id=?',(task_id,)).fetchone()
@@ -44,11 +51,16 @@ def ingest(events, *, source):
                     'completed':'완료했어요', 'failed':'중단됐어요',
                     'review':'확인이 필요해요',
                 }[status]
-                text = f"{title} · {display}"
-                if e['summary']:
-                    text += '\n' + e['summary']
-                if status == 'waiting':
-                    text += '\n코덱스의 원래 대화에서 답해 주세요.'
+                project = e.get('project') or '프로젝트 미확인'
+                action = e.get('action') or {
+                    'running':'작업을 진행하고 있어요.',
+                    'waiting':'코덱스의 원래 대화에서 답해 주세요.',
+                    'completed':'추가 작업 없음',
+                    'failed':'코덱스의 원래 대화에서 중단 이유를 확인해 주세요.',
+                    'review':'코덱스의 마지막 답변을 확인해 주세요.',
+                }[status]
+                description = e['summary'] or display
+                text = f"[{project}]\n{title}\n{display} · {description}\n{action}"
                 notify = status != 'running' and (old is None or old['status'] != status)
                 if status == 'waiting' and old and old['status'] == 'waiting':
                     previous = c.execute('SELECT text FROM report_push WHERE key=?',
@@ -97,6 +109,29 @@ def daily(now, test=False):
                       (key if not index else f'{key}:{index}',text,time.time()))
 
 
+def message_content(key,text):
+    with room.db() as c:
+        c.execute('CREATE TABLE IF NOT EXISTS report_origins(key TEXT PRIMARY KEY,thread TEXT NOT NULL,task_id TEXT NOT NULL)')
+        if key.startswith('daily'):
+            origins=c.execute("""SELECT DISTINCT o.thread,t.title FROM report_origins o
+                JOIN tracked_tasks t ON o.task_id=t.id
+                WHERE o.key='codex-event:'||t.current_mid
+                AND t.status NOT IN ('completed','resolved') ORDER BY t.updated DESC LIMIT 15""").fetchall()
+        else:
+            origins=c.execute('SELECT thread,? AS title FROM report_origins WHERE key=?',
+                              ('맥에서 원래 대화 열기',key)).fetchall()
+    if not origins:
+        return 'text',{'text':text}
+    elements=[{'tag':'div','text':{'tag':'plain_text','content':text}}]
+    for origin in origins:
+        url='https://chatgpt.com/codex/open-app?codex_thread_id='+origin['thread']+'&hostId=local'
+        elements.append({'tag':'action','actions':[{
+            'tag':'button','text':{'tag':'plain_text','content':origin['title'][:60]},
+            'type':'primary','multi_url':{'url':url,'pc_url':url},
+        }]})
+    return 'interactive',{'config':{'wide_screen_mode':True},'elements':elements}
+
+
 def send_pending():
     room.STATE.mkdir(parents=True,exist_ok=True,mode=0o700)
     with (room.STATE/'report-send.lock').open('a') as lock:
@@ -115,9 +150,10 @@ def send_pending():
                 c.execute('UPDATE report_push SET attempted=COALESCE(attempted,?) WHERE key=?',
                           (time.time(),row['key']))
             try:
+                kind,content = message_content(row['key'],row['text'])
                 result = room.api('POST','/open-apis/im/v1/messages?receive_id_type=chat_id',{
-                    'receive_id':room.CHAT,'msg_type':'text',
-                    'content':json.dumps({'text':row['text']},ensure_ascii=False),
+                    'receive_id':room.CHAT,'msg_type':kind,
+                    'content':json.dumps(content,ensure_ascii=False),
                     'uuid':str(uuid.uuid5(uuid.NAMESPACE_URL,row['key']))})
                 mid = result['message_id']
             except Exception as e:
