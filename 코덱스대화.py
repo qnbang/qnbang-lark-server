@@ -207,10 +207,11 @@ def receive(ev):
     if parent or root:
         with db() as c:
             external = c.execute(
-                "SELECT 1 FROM report_push WHERE key LIKE 'claude-event:%' AND message IN (?,?)",
+                "SELECT key FROM report_push WHERE (key LIKE 'claude-event:%' OR key LIKE 'codex-event:%') AND message IN (?,?)",
                 (parent,root)).fetchone()
         if external:
-            try:reply(mid,'이 작업의 답은 시작한 클로드 코드 대화에 입력해 주세요.','claude-reply:'+mid)
+            tool = '코덱스' if external['key'].startswith('codex-') else '클로드 코드'
+            try:reply(mid,f'이 작업의 답은 시작한 {tool} 대화에 입력해 주세요.','external-reply:'+mid)
             except RuntimeError as e:
                 if str(e) != '전송 확인 필요':raise
             return True
@@ -254,10 +255,12 @@ def room_context(mid):
 
 def rpc(r):
     action=r['action']
-    if action in ('claude_events','report_tick'):
+    if action in ('claude_events','codex_events','report_tick'):
         import 라크보고
         if action == 'claude_events':
-            return 라크보고.ingest(r['events'])
+            return 라크보고.ingest(r['events'],source='claude')
+        if action == 'codex_events':
+            return 라크보고.ingest(r['events'],source='codex')
         return 라크보고.tick(test=r.get('test',False))
     with db() as c:
         if action=='claim':

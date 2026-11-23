@@ -1,4 +1,4 @@
-"""기존 라크 대기열에 클로드 상태와 한국시간 일일 보고를 기록한다."""
+"""기존 라크 대기열에 에이전트 상태와 한국시간 일일 보고를 기록한다."""
 import fcntl
 import json
 import re
@@ -15,7 +15,8 @@ TITLE = re.compile(r'[가-힣a-zA-Z0-9_. -]{1,60}')
 RETRY_SECONDS = 29 * 60
 
 
-def ingest(events):
+def ingest(events, *, source):
+    tool = {'claude':'클로드 코드','codex':'코덱스'}[source]
     if not isinstance(events, list) or not 1 <= len(events) <= 50:
         raise ValueError('이벤트 묶음 범위 오류')
     for e in events:
@@ -28,13 +29,13 @@ def ingest(events):
     with room.db() as c:
         c.execute('BEGIN IMMEDIATE')
         for e in events:
-            task_id = 'claude:' + e['task']
-            key = 'claude-event:' + e['id']
+            task_id = source + ':' + e['task']
+            key = source + '-event:' + e['id']
             received.append(e['id'])
             if c.execute('SELECT 1 FROM report_push WHERE key=?',(key,)).fetchone():
                 continue
             old = c.execute('SELECT title,status FROM tracked_tasks WHERE id=?',(task_id,)).fetchone()
-            base = f"클로드 코드 · {e['title']} · 대화 {e['session']}"
+            base = f"{tool} · {e['title']} · 대화 {e['session']}"
             title = base + (' · '+e['summary'] if e['summary'] else '')
             status = e['status']
             c.execute("""INSERT INTO tracked_tasks VALUES(?,?,?,NULL,?,?)
@@ -44,7 +45,7 @@ def ingest(events):
             notify = old is None or old['status'] != status and status != 'running'
             text = title + ' · ' + ('작업 접수' if old is None and status=='running' else room.STATUS_LABEL[status])
             if status == 'waiting':
-                text += '\n원래 클로드 코드 대화에서 질문을 확인하고 답해 주세요.'
+                text += f'\n원래 {tool} 대화에서 질문을 확인하고 답해 주세요.'
             c.execute('INSERT INTO report_push(key,text,created,state) VALUES(?,?,?,?)',
                       (key,text,time.time(),'pending' if notify else 'recorded'))
     return {'accepted':received}
@@ -115,7 +116,7 @@ def tick(test=False):
         c.execute('BEGIN IMMEDIATE')
         room.expire_jobs(c)
         c.execute("""UPDATE tracked_tasks SET status='review',updated=?
-            WHERE id LIKE 'claude:%' AND status='running' AND updated<?""",
+            WHERE (id LIKE 'claude:%' OR id LIKE 'codex:%') AND status='running' AND updated<?""",
                   (time.time(),time.time()-4*3600))
     now = datetime.now(room.KOREA)
     daily(now,test)
