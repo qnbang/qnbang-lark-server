@@ -83,7 +83,7 @@ def expire_jobs(c):
                  WHERE status IN ('running','cancel_requested') AND updated<?""", (cutoff,))
 
 
-def report(body, now=None):
+def report(body, now=None, *, include_codes=True):
     now = now or datetime.now(KOREA)
     start = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
     with db() as c:
@@ -101,9 +101,19 @@ def report(body, now=None):
             uncertain = 0
     title = '답변 대기' if body in ('답변 대기', '내 답 기다리는 거 뭐 있어?') else now.strftime('%m월 %d일 작업 보고')
     lines = [title]
-    for row in rows:
-        suffix = f" · 번호 {task_code(row['id'])}" if row['status'] not in ('completed','resolved') else ''
-        lines.append(f"• {row['title']} · {STATUS_LABEL[row['status']]}{suffix}")
+    for states,label in (
+        (('waiting',),'답변이 필요한 일'),
+        (('failed','review','delivery_unknown'),'확인이 필요한 일'),
+        (('pending','running'),'진행 중인 일'),
+        (('completed','resolved'),'끝난 일'),
+    ):
+        group = [row for row in rows if row['status'] in states]
+        if group:
+            lines.extend(('',label))
+        for row in group:
+            suffix = f" ({task_code(row['id'])})" if include_codes and row['status'] not in ('completed','resolved') else ''
+            prefix = '중단 · ' if row['status']=='failed' else ''
+            lines.append(f"• {prefix}{row['title']}{suffix}")
     if not rows:
         lines.append('해당하는 작업이 없어요.')
     if uncertain:

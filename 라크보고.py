@@ -23,7 +23,8 @@ def ingest(events, *, source):
         if not (HEX_ID.fullmatch(e['id']) and HEX_ID.fullmatch(e['task'])
                 and e['status'] in STATES and TITLE.fullmatch(e['title'])
                 and re.fullmatch(r'[a-f0-9]{8}',e['session'])
-                and re.fullmatch(r'[가-힣a-zA-Z0-9 .,:!?()·-]{0,80}',e['summary'])):
+                and re.fullmatch(r'[가-힣a-zA-Z0-9 .,:!?()·-]{0,80}',e['summary'])
+                and re.fullmatch(r'[가-힣a-zA-Z0-9 .,:!?()·-]{0,45}',e.get('label',''))):
             raise ValueError('클로드 작업 보고 형식 오류')
     received = []
     with room.db() as c:
@@ -34,18 +35,36 @@ def ingest(events, *, source):
             received.append(e['id'])
             if c.execute('SELECT 1 FROM report_push WHERE key=?',(key,)).fetchone():
                 continue
-            old = c.execute('SELECT title,status FROM tracked_tasks WHERE id=?',(task_id,)).fetchone()
-            base = f"{tool} · {e['title']} · 대화 {e['session']}"
-            title = base + (' · '+e['summary'] if e['summary'] else '')
+            old = c.execute('SELECT title,status,current_mid FROM tracked_tasks WHERE id=?',(task_id,)).fetchone()
             status = e['status']
+            if source == 'codex':
+                title = e.get('label') or (old['title'] if old else e['title'])
+                display = {
+                    'running':'작업 중', 'waiting':'답변이 필요해요',
+                    'completed':'완료했어요', 'failed':'중단됐어요',
+                    'review':'확인이 필요해요',
+                }[status]
+                text = f"{title} · {display}"
+                if e['summary']:
+                    text += '\n' + e['summary']
+                if status == 'waiting':
+                    text += '\n코덱스의 원래 대화에서 답해 주세요.'
+                notify = status != 'running' and (old is None or old['status'] != status)
+                if status == 'waiting' and old and old['status'] == 'waiting':
+                    previous = c.execute('SELECT text FROM report_push WHERE key=?',
+                                         (source+'-event:'+old['current_mid'],)).fetchone()
+                    notify = previous is None or previous['text'] != text
+            else:
+                base = f"{tool} · {e['title']} · 대화 {e['session']}"
+                title = base + (' · '+e['summary'] if e['summary'] else '')
+                notify = old is None or old['status'] != status and status != 'running'
+                text = title + ' · ' + ('작업 접수' if old is None and status=='running' else room.STATUS_LABEL[status])
+                if status == 'waiting':
+                    text += f'\n원래 {tool} 대화에서 질문을 확인하고 답해 주세요.'
             c.execute("""INSERT INTO tracked_tasks VALUES(?,?,?,NULL,?,?)
                 ON CONFLICT(id) DO UPDATE SET status=excluded.status,title=excluded.title,
                 current_mid=excluded.current_mid,updated=excluded.updated""",
                 (task_id,title,status,e['id'],time.time()))
-            notify = old is None or old['status'] != status and status != 'running'
-            text = title + ' · ' + ('작업 접수' if old is None and status=='running' else room.STATUS_LABEL[status])
-            if status == 'waiting':
-                text += f'\n원래 {tool} 대화에서 질문을 확인하고 답해 주세요.'
             c.execute('INSERT INTO report_push(key,text,created,state) VALUES(?,?,?,?)',
                       (key,text,time.time(),'pending' if notify else 'recorded'))
     return {'accepted':received}
@@ -58,7 +77,7 @@ def daily(now, test=False):
     with room.db() as c:
         if c.execute('SELECT 1 FROM report_push WHERE key=?',(key,)).fetchone():
             return
-    report = room.report('오늘 작업',now)
+    report = room.report('오늘 작업',now,include_codes=False)
     if test:
         report = '일일 자동 보고 시험\n' + report
     chunks = []
