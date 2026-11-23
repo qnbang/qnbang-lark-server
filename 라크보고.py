@@ -113,21 +113,23 @@ def message_content(key,text):
     with room.db() as c:
         c.execute('CREATE TABLE IF NOT EXISTS report_origins(key TEXT PRIMARY KEY,thread TEXT NOT NULL,task_id TEXT NOT NULL)')
         if key.startswith('daily'):
-            origins=c.execute("""SELECT DISTINCT o.thread,t.title FROM report_origins o
+            origins=c.execute("""SELECT DISTINCT o.thread,t.title,o.key FROM report_origins o
                 JOIN tracked_tasks t ON o.task_id=t.id
                 WHERE o.key='codex-event:'||t.current_mid
                 AND t.status NOT IN ('completed','resolved') ORDER BY t.updated DESC LIMIT 15""").fetchall()
         else:
-            origins=c.execute('SELECT thread,? AS title FROM report_origins WHERE key=?',
+            origins=c.execute('SELECT thread,? AS title,key FROM report_origins WHERE key=?',
                               ('맥에서 원래 대화 열기',key)).fetchall()
     if not origins:
         return 'text',{'text':text}
     elements=[{'tag':'div','text':{'tag':'plain_text','content':text}}]
     for origin in origins:
-        url='https://chatgpt.com/codex/open-app?codex_thread_id='+origin['thread']+'&hostId=local'
+        with room.db() as c:
+            c.execute('CREATE TABLE IF NOT EXISTS open_targets(key TEXT NOT NULL,thread TEXT NOT NULL,PRIMARY KEY(key,thread))')
+            c.execute('INSERT OR IGNORE INTO open_targets VALUES(?,?)',(key,origin['thread']))
         elements.append({'tag':'action','actions':[{
             'tag':'button','text':{'tag':'plain_text','content':origin['title'][:60]},
-            'type':'primary','multi_url':{'url':url,'pc_url':url},
+            'type':'primary','value':{'action':'open_codex','thread':origin['thread'],'report_key':key},
         }]})
     return 'interactive',{'config':{'wide_screen_mode':True},'elements':elements}
 

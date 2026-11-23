@@ -265,6 +265,13 @@ def room_context(mid):
 
 def rpc(r):
     action=r['action']
+    if action in ('claim','open_finish'):
+        import 대화열기
+        if action=='open_finish':
+            return 대화열기.finish(r)
+        opening=대화열기.claim()
+        if opening:
+            return opening
     if action in ('claude_events','codex_events','report_tick'):
         import 라크보고
         if action == 'claude_events':

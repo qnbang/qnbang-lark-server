@@ -148,6 +148,7 @@ def main():
     핸들러 = (
         lark_oapi.EventDispatcherHandler.builder("", "")
         .register_p2_im_message_receive_v1(메시지왔을때)
+        .register_p2_card_action_trigger(__import__('대화열기').receive)
         .build()
     )
     client = lark_oapi.ws.Client(
