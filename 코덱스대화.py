@@ -1,5 +1,5 @@
 """라크 작업방 시험 연결. 방과 실행 상태는 서버 로컬에 보관한다."""
-import json, os, sqlite3, sys, time, uuid
+import json, os, re, sqlite3, sys, time, uuid
 from pathlib import Path
 import urllib.request
 from datetime import datetime, timezone, timedelta
@@ -18,7 +18,11 @@ def db():
         session TEXT, current_mid TEXT NOT NULL, updated REAL NOT NULL);
     CREATE TABLE IF NOT EXISTS tracked_turns(
         mid TEXT PRIMARY KEY, task_id TEXT NOT NULL);
-    CREATE INDEX IF NOT EXISTS tracked_turns_task ON tracked_turns(task_id);''')
+    CREATE INDEX IF NOT EXISTS tracked_turns_task ON tracked_turns(task_id);
+    CREATE TABLE IF NOT EXISTS report_push(
+        key TEXT PRIMARY KEY, text TEXT NOT NULL, created REAL NOT NULL,
+        attempted REAL, state TEXT NOT NULL DEFAULT 'pending', message TEXT);
+    CREATE INDEX IF NOT EXISTS report_push_pending ON report_push(state,created);''')
     return c
 
 def api(method,path,body=None):
@@ -61,6 +65,7 @@ KOREA = timezone(timedelta(hours=9))
 STATUS_LABEL = {
     'pending': '실행 대기', 'running': '실행 중', 'waiting': '답변 필요',
     'completed': '완료', 'failed': '중단', 'delivery_unknown': '보고 확인 필요',
+    'review': '상태 확인 필요', 'resolved': '해결',
 }
 
 
@@ -78,8 +83,8 @@ def expire_jobs(c):
                  WHERE status IN ('running','cancel_requested') AND updated<?""", (cutoff,))
 
 
-def report(body):
-    now = datetime.now(KOREA)
+def report(body, now=None):
+    now = now or datetime.now(KOREA)
     start = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
     with db() as c:
         c.execute('BEGIN IMMEDIATE')
@@ -88,11 +93,38 @@ def report(body):
             rows = c.execute("SELECT * FROM tracked_tasks WHERE status='waiting' ORDER BY updated").fetchall()
         else:
             rows = c.execute("""SELECT * FROM tracked_tasks
-                WHERE status IN ('waiting','pending','running','delivery_unknown')
+                WHERE status NOT IN ('completed','resolved')
                 OR updated>=? ORDER BY updated DESC""", (start,)).fetchall()
+        if body not in ('답변 대기', '내 답 기다리는 거 뭐 있어?'):
+            uncertain = c.execute("SELECT COUNT(*) FROM report_push WHERE state='uncertain'").fetchone()[0]
+        else:
+            uncertain = 0
     title = '답변 대기' if body in ('답변 대기', '내 답 기다리는 거 뭐 있어?') else now.strftime('%m월 %d일 작업 보고')
-    lines = [title] + [f"• {row['title']} · {STATUS_LABEL[row['status']]}" for row in rows]
-    return '\n'.join(lines if rows else lines + ['해당하는 작업이 없어요.'])
+    lines = [title]
+    for row in rows:
+        suffix = f" · 번호 {task_code(row['id'])}" if row['status'] not in ('completed','resolved') else ''
+        lines.append(f"• {row['title']} · {STATUS_LABEL[row['status']]}{suffix}")
+    if not rows:
+        lines.append('해당하는 작업이 없어요.')
+    if uncertain:
+        lines.append(f'전송 여부를 확인해야 하는 이전 보고 {uncertain}건이 있어요.')
+    return '\n'.join(lines)
+
+def task_code(task_id):
+    return uuid.uuid5(uuid.NAMESPACE_URL, task_id).hex[:10]
+
+def resolve(code):
+    with db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        rows = [r for r in c.execute(
+            "SELECT id,title FROM tracked_tasks WHERE status IN ('waiting','failed','review','delivery_unknown')")
+            if task_code(r['id']) == code]
+        if len(rows) != 1:
+            return '해결할 수 있는 작업 번호를 찾지 못했어요. 오늘 작업에서 번호를 확인해 주세요.'
+        c.execute("UPDATE tracked_tasks SET status='resolved',updated=? WHERE id=?",
+                  (time.time(),rows[0]['id']))
+    return f"{rows[0]['title']} · 해결로 표시했어요."
+
 
 
 def tracked_input(mid, parent, root, body):
@@ -165,7 +197,24 @@ def receive(ev):
         except RuntimeError as e:
             if str(e) != '전송 확인 필요':raise
         return True
-    tracked = tracked_input(mid,getattr(msg,'parent_id',None),getattr(msg,'root_id',None),body)
+    parent, root = getattr(msg,'parent_id',None), getattr(msg,'root_id',None)
+    resolve_request = re.fullmatch(r'해결 ([a-f0-9]{10})',body)
+    if resolve_request and not (parent or root):
+        try:reply(mid,resolve(resolve_request[1]),'resolve:'+mid)
+        except RuntimeError as e:
+            if str(e) != '전송 확인 필요':raise
+        return True
+    if parent or root:
+        with db() as c:
+            external = c.execute(
+                "SELECT 1 FROM report_push WHERE key LIKE 'claude-event:%' AND message IN (?,?)",
+                (parent,root)).fetchone()
+        if external:
+            try:reply(mid,'이 작업의 답은 시작한 클로드 코드 대화에 입력해 주세요.','claude-reply:'+mid)
+            except RuntimeError as e:
+                if str(e) != '전송 확인 필요':raise
+            return True
+    tracked = tracked_input(mid,parent,root,body)
     if tracked is not False:
         if tracked:
             try:reply(mid,tracked,'ack:'+mid)
@@ -205,6 +254,11 @@ def room_context(mid):
 
 def rpc(r):
     action=r['action']
+    if action in ('claude_events','report_tick'):
+        import 라크보고
+        if action == 'claude_events':
+            return 라크보고.ingest(r['events'])
+        return 라크보고.tick(test=r.get('test',False))
     with db() as c:
         if action=='claim':
             c.execute('BEGIN IMMEDIATE')
