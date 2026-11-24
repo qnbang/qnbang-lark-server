@@ -16,6 +16,14 @@ RETRY_SECONDS = 29 * 60
 
 
 def ingest(events, *, source):
+    # 기존 카드 갱신 판단과 실제 발송이 엇갈려 두 장을 보내지 않도록 같은 잠금을 쓴다.
+    room.STATE.mkdir(parents=True,exist_ok=True,mode=0o700)
+    with (room.STATE/'report-send.lock').open('a') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX)
+        return _ingest(events,source=source)
+
+
+def _ingest(events, *, source):
     tool = {'claude':'클로드 코드','codex':'코덱스'}[source]
     if not isinstance(events, list) or not 1 <= len(events) <= 50:
         raise ValueError('이벤트 묶음 범위 오류')
@@ -40,6 +48,8 @@ def ingest(events, *, source):
             task_id = source + ':' + e['task']
             key = source + '-event:' + e['id']
             received.append(e['id'])
+            reuse_message=None
+            update_card=False
             if source == 'codex' and e.get('question_group'):
                 답변연결.save(c,key,e['question_group'])
             elif source=='codex' and e['status']=='waiting' and e.get('turn'):
@@ -91,12 +101,28 @@ def ingest(events, *, source):
                 text = title + ' · ' + ('작업 접수' if old is None and status=='running' else room.STATUS_LABEL[status])
                 if status == 'waiting':
                     text += f'\n원래 {tool} 대화에서 질문을 확인하고 답해 주세요.'
+            if source=='codex' and status=='completed' and e.get('thread'):
+                previous=c.execute("""SELECT p.key,p.text,p.state,p.message,p.created FROM report_push p
+                  JOIN report_origins o ON o.key=p.key
+                  WHERE o.thread=? AND p.state IN ('sent','pending','update_pending')
+                  ORDER BY p.created DESC,p.rowid DESC LIMIT 1""",(e['thread'],)).fetchone()
+                prior=previous['text'].splitlines() if previous else []
+                same_subject=previous and len(prior)>=3 and prior[1]=='안건: '+title and prior[2]=='🟢 완료'
+                if same_subject and time.time()-previous['created']<600:
+                    if previous['message']:
+                        reuse_message=previous['message']
+                        update_card=previous['text']!=text
+                        notify=False
+                    else:
+                        # 아직 발송 전이면 앞선 중간 보고를 보존하고 최신 내용 한 장만 보낸다.
+                        c.execute("UPDATE report_push SET state='superseded' WHERE key=?",(previous['key'],))
+                        notify=True
             c.execute("""INSERT INTO tracked_tasks VALUES(?,?,?,NULL,?,?)
                 ON CONFLICT(id) DO UPDATE SET status=excluded.status,title=excluded.title,
                 current_mid=excluded.current_mid,updated=excluded.updated""",
                 (task_id,title,status,e['id'],time.time()))
-            c.execute('INSERT INTO report_push(key,text,created,state) VALUES(?,?,?,?)',
-                      (key,text,time.time(),'pending' if notify else 'recorded'))
+            c.execute('INSERT INTO report_push(key,text,created,state,message) VALUES(?,?,?,?,?)',
+                      (key,text,time.time(),'update_pending' if update_card else 'pending' if notify else 'recorded',reuse_message))
     return {'accepted':received}
 
 
@@ -178,8 +204,8 @@ def send_pending():
         with room.db() as c:
             c.execute("""UPDATE report_push SET state='uncertain'
                 WHERE state='pending' AND attempted<?""",(time.time()-RETRY_SECONDS,))
-            queue = c.execute("""SELECT key,text FROM report_push
-                WHERE state='pending' ORDER BY created,rowid LIMIT 20""").fetchall()
+            queue = c.execute("""SELECT key,text,state,message FROM report_push
+                WHERE state IN ('pending','update_pending') ORDER BY created,rowid LIMIT 20""").fetchall()
         sent = 0
         for row in queue:
             with room.db() as c:
@@ -187,11 +213,16 @@ def send_pending():
                           (time.time(),row['key']))
             try:
                 kind,content = message_content(row['key'],row['text'])
-                result = room.api('POST','/open-apis/im/v1/messages?receive_id_type=chat_id',{
-                    'receive_id':room.CHAT,'msg_type':kind,
-                    'content':json.dumps(content,ensure_ascii=False),
-                    'uuid':str(uuid.uuid5(uuid.NAMESPACE_URL,row['key']))})
-                mid = result['message_id']
+                if row['state']=='update_pending':
+                    room.api('PATCH','/open-apis/im/v1/messages/'+row['message'],{
+                        'content':json.dumps(content,ensure_ascii=False)})
+                    mid=row['message']
+                else:
+                    result = room.api('POST','/open-apis/im/v1/messages?receive_id_type=chat_id',{
+                        'receive_id':room.CHAT,'msg_type':kind,
+                        'content':json.dumps(content,ensure_ascii=False),
+                        'uuid':str(uuid.uuid5(uuid.NAMESPACE_URL,row['key']))})
+                    mid = result['message_id']
             except Exception as e:
                 print('라크 보고 전송 재확인',type(e).__name__,file=sys.stderr)
                 break
