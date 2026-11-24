@@ -33,9 +33,10 @@ def receive(data):
             (key,mid,target)).fetchone()
         if not origin:
             return response('원래 보고와 연결된 대화를 확인하지 못했습니다.')
-        if value.get('action') in ('reply_form','submit_reply'):
-            import 답변연결
-            return 답변연결.receive(e,key,target)
+        if value.get('action')=='submit_reply':
+            return response('라크 답변 입력은 종료했습니다. 코덱스에서 확인해 주세요.')
+        if value.get('action')=='reply_form':
+            value['action']='open_codex'
         if value.get('action')!='open_codex':return response('지원하지 않는 요청입니다.')
         event_id=getattr(getattr(data,'header',None),'event_id',None) or getattr(e,'token',None) or str(int(time.time()/2))
         rid=str(uuid.uuid5(uuid.NAMESPACE_URL,str(event_id)+mid+target))

@@ -107,7 +107,7 @@ def finish(payload):
     text='답변을 원래 코덱스 대화의 대기열에 전달했습니다.' if delivered else '답변을 전달하지 못했습니다. 원래 코덱스 대화에서 확인해 주세요.'
     card['elements'].append({'tag':'div','text':{'tag':'plain_text','content':text}})
     card['elements'].append({'tag':'action','actions':[{'tag':'button','type':'default',
-        'text':{'tag':'plain_text','content':'맥에서 원래 대화 열기'},
+        'text':{'tag':'plain_text','content':'코덱스에서 확인하기'},
         'value':{'action':'open_codex','thread':row['thread'],'report_key':row['key']}}]})
     try:room.api('PATCH','/open-apis/im/v1/messages/'+p['message'],{'content':json.dumps(card,ensure_ascii=False)})
     except Exception:pass

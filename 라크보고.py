@@ -15,6 +15,12 @@ TITLE = re.compile(r'[가-힣a-zA-Z0-9_. -]{1,60}')
 RETRY_SECONDS = 29 * 60
 
 
+def clean_report_text(text):
+    for old in ('라크에서 답변하기를 눌러 답을 입력해 주세요.','아래 답변하기에서 답을 입력해 주세요.'):
+        text=text.replace(old,'원래 코덱스 대화에서 답변해 주세요.')
+    return text
+
+
 def ingest(events, *, source):
     # 기존 카드 갱신 판단과 실제 발송이 엇갈려 두 장을 보내지 않도록 같은 잠금을 쓴다.
     room.STATE.mkdir(parents=True,exist_ok=True,mode=0o700)
@@ -87,7 +93,7 @@ def _ingest(events, *, source):
                     lines.extend(('', '처리 내용',e['summary']))
                 if action and action not in ('추가 작업 없음','없음'):
                     lines.extend(('', '확인 요청' if status=='waiting' else '후속 조치',action))
-                text='\n'.join(lines)
+                text=clean_report_text('\n'.join(lines))
 
                 notify = status in ('waiting','completed','failed') and (old is None or old['status'] != status)
                 if status == 'waiting' and old and old['status'] == 'waiting':
@@ -154,6 +160,7 @@ def daily(now, test=False):
 
 
 def message_content(key,text):
+    text=clean_report_text(text)
     with room.db() as c:
         c.execute('CREATE TABLE IF NOT EXISTS report_origins(key TEXT PRIMARY KEY,thread TEXT NOT NULL,task_id TEXT NOT NULL)')
         if key.startswith('daily'):
@@ -163,7 +170,7 @@ def message_content(key,text):
                 AND t.status NOT IN ('completed','resolved') ORDER BY t.updated DESC LIMIT 15""").fetchall()
         else:
             origins=c.execute('SELECT thread,? AS title,key FROM report_origins WHERE key=?',
-                              ('맥에서 원래 대화 열기',key)).fetchall()
+                              ('코덱스에서 확인하기',key)).fetchall()
     if not origins:
         return 'text',{'text':text}
     lines=text.splitlines()
@@ -172,21 +179,12 @@ def message_content(key,text):
     elements=[{'tag':'div','text':{'tag':'plain_text','content':body}}]
     for origin in origins:
         button_title=origin['title'][:60]
-        if key.startswith('codex-event:') and len(lines)>=3 and lines[2]=='🟠 답변 필요':
-            button_title='코덱스에서 답변하기'
         with room.db() as c:
             c.execute('CREATE TABLE IF NOT EXISTS open_targets(key TEXT NOT NULL,thread TEXT NOT NULL,PRIMARY KEY(key,thread))')
             c.execute('INSERT OR IGNORE INTO open_targets VALUES(?,?)',(key,origin['thread']))
-        native_question=False
-        if key.startswith('codex-event:') and len(lines)>=3 and lines[2]=='🟠 답변 필요':
-            with room.db() as c:
-                import 답변연결
-                답변연결.setup(c)
-                native_question=c.execute('SELECT 1 FROM report_questions WHERE key=?',(key,)).fetchone() is not None
-            if native_question:button_title='라크에서 답변하기'
         elements.append({'tag':'action','actions':[{
             'tag':'button','text':{'tag':'plain_text','content':button_title},
-            'type':'primary','value':{'action':'reply_form' if native_question else 'open_codex','thread':origin['thread'],'report_key':key},
+            'type':'primary','value':{'action':'open_codex','thread':origin['thread'],'report_key':key},
         }]})
     card={'config':{'wide_screen_mode':True},'elements':elements}
     if heading:

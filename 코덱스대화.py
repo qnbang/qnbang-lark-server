@@ -223,7 +223,7 @@ def receive(ev):
                 (parent,root)).fetchone()
         if external:
             tool = '코덱스' if external['key'].startswith('codex-') else '클로드 코드'
-            try:reply(mid,f'최신 보고의 라크에서 답변하기 버튼을 누르거나, 원래 {tool} 대화에서 답해 주세요.','external-reply:'+mid)
+            try:reply(mid,f'보고의 코덱스에서 확인하기 버튼으로 원래 {tool} 대화를 열고 답해 주세요.','external-reply:'+mid)
             except RuntimeError as e:
                 if str(e) != '전송 확인 필요':raise
             return True
