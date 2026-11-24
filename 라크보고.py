@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime
 
 import 코덱스대화 as room
+from 작업물링크 import normalize as artifact_links
 
 STATES = {'running','waiting','completed','failed','review'}
 HEX_ID = re.compile(r'[a-f0-9]{32}')
@@ -45,6 +46,7 @@ def _ingest(events, *, source):
             raise ValueError('클로드 작업 보고 형식 오류')
     with room.db() as c:
         c.execute('CREATE TABLE IF NOT EXISTS report_origins(key TEXT PRIMARY KEY,thread TEXT NOT NULL,task_id TEXT NOT NULL)')
+        c.execute('CREATE TABLE IF NOT EXISTS report_artifacts(key TEXT PRIMARY KEY,links TEXT NOT NULL)')
     import 답변연결
     with room.db() as c:답변연결.setup(c)
     received = []
@@ -56,6 +58,7 @@ def _ingest(events, *, source):
             received.append(e['id'])
             reuse_message=None
             update_card=False
+            artifacts=artifact_links(e.get('artifacts',[]))
             if source == 'codex' and e.get('question_group'):
                 답변연결.save(c,key,e['question_group'])
             elif source=='codex' and e['status']=='waiting' and e.get('turn'):
@@ -115,14 +118,18 @@ def _ingest(events, *, source):
                 prior=previous['text'].splitlines() if previous else []
                 same_subject=previous and len(prior)>=3 and prior[1]=='안건: '+title and prior[2]=='🟢 완료'
                 if same_subject and time.time()-previous['created']<600:
+                    old_links=c.execute('SELECT links FROM report_artifacts WHERE key=?',(previous['key'],)).fetchone()
+                    prior_links=json.loads(old_links['links']) if old_links else []
+                    if not artifacts:artifacts=prior_links
                     if previous['message']:
                         reuse_message=previous['message']
-                        update_card=previous['text']!=text
+                        update_card=previous['text']!=text or prior_links!=artifacts
                         notify=False
                     else:
                         # 아직 발송 전이면 앞선 중간 보고를 보존하고 최신 내용 한 장만 보낸다.
                         c.execute("UPDATE report_push SET state='superseded' WHERE key=?",(previous['key'],))
                         notify=True
+            c.execute('INSERT OR REPLACE INTO report_artifacts VALUES(?,?)',(key,json.dumps(artifacts,ensure_ascii=False)))
             c.execute("""INSERT INTO tracked_tasks VALUES(?,?,?,NULL,?,?)
                 ON CONFLICT(id) DO UPDATE SET status=excluded.status,title=excluded.title,
                 current_mid=excluded.current_mid,updated=excluded.updated""",
@@ -163,6 +170,7 @@ def message_content(key,text):
     text=clean_report_text(text)
     with room.db() as c:
         c.execute('CREATE TABLE IF NOT EXISTS report_origins(key TEXT PRIMARY KEY,thread TEXT NOT NULL,task_id TEXT NOT NULL)')
+        c.execute('CREATE TABLE IF NOT EXISTS report_artifacts(key TEXT PRIMARY KEY,links TEXT NOT NULL)')
         if key.startswith('daily'):
             origins=c.execute("""SELECT DISTINCT o.thread,t.title,o.key FROM report_origins o
                 JOIN tracked_tasks t ON o.task_id=t.id
@@ -171,12 +179,18 @@ def message_content(key,text):
         else:
             origins=c.execute('SELECT thread,? AS title,key FROM report_origins WHERE key=?',
                               ('코덱스에서 확인하기',key)).fetchall()
+        stored=c.execute('SELECT links FROM report_artifacts WHERE key=?',(key,)).fetchone()
+        artifacts=artifact_links(json.loads(stored['links'])) if stored else []
     if not origins:
         return 'text',{'text':text}
     lines=text.splitlines()
     heading=lines[0] if key.startswith('codex-event:') and len(lines)>=3 else None
     body='\n'.join(lines[1:]) if heading else text
     elements=[{'tag':'div','text':{'tag':'plain_text','content':body}}]
+    for artifact in artifacts:
+        elements.append({'tag':'div','text':{'tag':'plain_text','content':'작업물: '+artifact['title']}})
+        elements.append({'tag':'action','actions':[{'tag':'button',
+            'text':{'tag':'plain_text','content':artifact['button']},'type':'primary','url':artifact['url']}]})
     for origin in origins:
         button_title=origin['title'][:60]
         with room.db() as c:
@@ -184,7 +198,7 @@ def message_content(key,text):
             c.execute('INSERT OR IGNORE INTO open_targets VALUES(?,?)',(key,origin['thread']))
         elements.append({'tag':'action','actions':[{
             'tag':'button','text':{'tag':'plain_text','content':button_title},
-            'type':'primary','value':{'action':'open_codex','thread':origin['thread'],'report_key':key},
+            'type':'default' if artifacts else 'primary','value':{'action':'open_codex','thread':origin['thread'],'report_key':key},
         }]})
     card={'config':{'wide_screen_mode':True},'elements':elements}
     if heading:
