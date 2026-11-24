@@ -23,10 +23,10 @@ def ingest(events, *, source):
         if not (HEX_ID.fullmatch(e['id']) and HEX_ID.fullmatch(e['task'])
                 and e['status'] in STATES and TITLE.fullmatch(e['title'])
                 and re.fullmatch(r'[a-f0-9]{8}',e['session'])
-                and re.fullmatch(r'[가-힣a-zA-Z0-9 .,:!?()·-]{0,80}',e['summary'])
-                and re.fullmatch(r'[가-힣a-zA-Z0-9 .,:!?()·-]{0,45}',e.get('label',''))
-                and re.fullmatch(r'[가-힣a-zA-Z0-9 .,:!?()·-]{0,45}',e.get('project',''))
-                and re.fullmatch(r'[가-힣a-zA-Z0-9 .,:!?()·-]{0,80}',e.get('action',''))
+                and re.fullmatch(r'[가-힣a-zA-Z0-9 .,:!?()·~-]{0,220}',e['summary'])
+                and re.fullmatch(r'[가-힣a-zA-Z0-9 .,:!?()·~-]{0,45}',e.get('label',''))
+                and re.fullmatch(r'[가-힣a-zA-Z0-9_. ()·-]{0,60}',e.get('project',''))
+                and re.fullmatch(r'[가-힣a-zA-Z0-9 .,:!?()·~-]{0,80}',e.get('action',''))
                 and re.fullmatch(r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}',e.get('thread','00000000-0000-0000-0000-000000000000'))):
             raise ValueError('클로드 작업 보고 형식 오류')
     with room.db() as c:
@@ -44,14 +44,19 @@ def ingest(events, *, source):
                 continue
             old = c.execute('SELECT title,status,current_mid FROM tracked_tasks WHERE id=?',(task_id,)).fetchone()
             status = e['status']
+            if source == 'codex' and status == 'failed' and e.get('summary') in (
+                '진행 중에 멈췄어요.', '작업 중단 신호 수신',
+                '결과가 나오기 전에 대화가 닫혔어요.', '마지막 결과 기록 전에 대화 종료',
+            ):
+                status = 'review'
             if source == 'codex':
                 title = e.get('label') or (old['title'] if old else e['title'])
                 display = {
-                    'running':'작업 중', 'waiting':'답변이 필요해요',
-                    'completed':'완료했어요', 'failed':'중단됐어요',
-                    'review':'확인이 필요해요',
+                    'running':'작업 중', 'waiting':'🟠 답변 필요',
+                    'completed':'🟢 완료', 'failed':'🔴 중단',
+                    'review':'상태 확인 중',
                 }[status]
-                project = e.get('project') or '프로젝트 미확인'
+                project = e.get('project') if e.get('project') not in (None,'','프로젝트 미확인') else e['title']
                 action = e.get('action') or {
                     'running':'작업을 진행하고 있어요.',
                     'waiting':'코덱스의 원래 대화에서 답해 주세요.',
@@ -59,8 +64,12 @@ def ingest(events, *, source):
                     'failed':'코덱스의 원래 대화에서 중단 이유를 확인해 주세요.',
                     'review':'코덱스의 마지막 답변을 확인해 주세요.',
                 }[status]
-                description = e['summary'] or display
-                text = f"[{project}]\n{title}\n{display} · {description}\n{action}"
+                lines=[f"[{project}]",f"안건: {title}",display]
+                if e['summary']:
+                    lines.extend(('', '처리 내용',e['summary']))
+                if action and action not in ('추가 작업 없음','없음'):
+                    lines.extend(('', '확인 요청' if status=='waiting' else '후속 조치',action))
+                text='\n'.join(lines)
 
                 notify = status in ('waiting','completed','failed') and (old is None or old['status'] != status)
                 if status == 'waiting' and old and old['status'] == 'waiting':
@@ -123,16 +132,25 @@ def message_content(key,text):
                               ('맥에서 원래 대화 열기',key)).fetchall()
     if not origins:
         return 'text',{'text':text}
-    elements=[{'tag':'div','text':{'tag':'plain_text','content':text}}]
+    lines=text.splitlines()
+    heading=lines[0] if key.startswith('codex-event:') and len(lines)>=3 else None
+    body='\n'.join(lines[1:]) if heading else text
+    elements=[{'tag':'div','text':{'tag':'plain_text','content':body}}]
     for origin in origins:
+        button_title=origin['title'][:60]
+        if key.startswith('codex-event:') and len(lines)>=3 and lines[2]=='🟠 답변 필요':
+            button_title='코덱스에서 답변하기'
         with room.db() as c:
             c.execute('CREATE TABLE IF NOT EXISTS open_targets(key TEXT NOT NULL,thread TEXT NOT NULL,PRIMARY KEY(key,thread))')
             c.execute('INSERT OR IGNORE INTO open_targets VALUES(?,?)',(key,origin['thread']))
         elements.append({'tag':'action','actions':[{
-            'tag':'button','text':{'tag':'plain_text','content':origin['title'][:60]},
+            'tag':'button','text':{'tag':'plain_text','content':button_title},
             'type':'primary','value':{'action':'open_codex','thread':origin['thread'],'report_key':key},
         }]})
-    return 'interactive',{'config':{'wide_screen_mode':True},'elements':elements}
+    card={'config':{'wide_screen_mode':True},'elements':elements}
+    if heading:
+        card['header']={'title':{'tag':'plain_text','content':heading}}
+    return 'interactive',card
 
 
 def send_pending():
