@@ -208,6 +208,8 @@ def receive(ev):
             if str(e) != '전송 확인 필요':raise
         return True
     parent, root = getattr(msg,'parent_id',None), getattr(msg,'root_id',None)
+    if not (parent or root) and re.sub(r'[\s.!~ㅋㅎ]+','',body).lower() in ('굿','ㅇ','ㅇㅇ','ㅇㅋ','오케이','알겠어','알겠습니다','좋아','좋아요','감사','감사합니다','고마워','ok','네','넵'):
+        return True
     resolve_request = re.fullmatch(r'해결 ([a-f0-9]{10})',body)
     if resolve_request and not (parent or root):
         try:reply(mid,resolve(resolve_request[1]),'resolve:'+mid)
@@ -221,7 +223,7 @@ def receive(ev):
                 (parent,root)).fetchone()
         if external:
             tool = '코덱스' if external['key'].startswith('codex-') else '클로드 코드'
-            try:reply(mid,f'이 작업의 답은 시작한 {tool} 대화에 입력해 주세요.','external-reply:'+mid)
+            try:reply(mid,f'최신 보고의 라크에서 답변하기 버튼을 누르거나, 원래 {tool} 대화에서 답해 주세요.','external-reply:'+mid)
             except RuntimeError as e:
                 if str(e) != '전송 확인 필요':raise
             return True

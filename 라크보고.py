@@ -31,6 +31,8 @@ def ingest(events, *, source):
             raise ValueError('클로드 작업 보고 형식 오류')
     with room.db() as c:
         c.execute('CREATE TABLE IF NOT EXISTS report_origins(key TEXT PRIMARY KEY,thread TEXT NOT NULL,task_id TEXT NOT NULL)')
+    import 답변연결
+    with room.db() as c:답변연결.setup(c)
     received = []
     with room.db() as c:
         c.execute('BEGIN IMMEDIATE')
@@ -38,6 +40,12 @@ def ingest(events, *, source):
             task_id = source + ':' + e['task']
             key = source + '-event:' + e['id']
             received.append(e['id'])
+            if source == 'codex' and e.get('question_group'):
+                답변연결.save(c,key,e['question_group'])
+            elif source=='codex' and e['status']=='waiting' and e.get('turn'):
+                turn=str(uuid.UUID(e['turn']))
+                답변연결.save(c,key,{'id':e['id'],'questions':[{'id':'marker:'+turn,
+                    'title':e.get('action') or e['summary'] or '원래 작업에 필요한 답변을 입력해 주세요.','options':[]}]})
             if source == 'codex' and e.get('thread'):
                 c.execute('INSERT OR IGNORE INTO report_origins VALUES(?,?,?)',(key,e['thread'],task_id))
             if c.execute('SELECT 1 FROM report_push WHERE key=?',(key,)).fetchone():
@@ -143,9 +151,16 @@ def message_content(key,text):
         with room.db() as c:
             c.execute('CREATE TABLE IF NOT EXISTS open_targets(key TEXT NOT NULL,thread TEXT NOT NULL,PRIMARY KEY(key,thread))')
             c.execute('INSERT OR IGNORE INTO open_targets VALUES(?,?)',(key,origin['thread']))
+        native_question=False
+        if key.startswith('codex-event:') and len(lines)>=3 and lines[2]=='🟠 답변 필요':
+            with room.db() as c:
+                import 답변연결
+                답변연결.setup(c)
+                native_question=c.execute('SELECT 1 FROM report_questions WHERE key=?',(key,)).fetchone() is not None
+            if native_question:button_title='라크에서 답변하기'
         elements.append({'tag':'action','actions':[{
             'tag':'button','text':{'tag':'plain_text','content':button_title},
-            'type':'primary','value':{'action':'open_codex','thread':origin['thread'],'report_key':key},
+            'type':'primary','value':{'action':'reply_form' if native_question else 'open_codex','thread':origin['thread'],'report_key':key},
         }]})
     card={'config':{'wide_screen_mode':True},'elements':elements}
     if heading:

@@ -33,6 +33,10 @@ def receive(data):
             (key,mid,target)).fetchone()
         if not origin:
             return response('원래 보고와 연결된 대화를 확인하지 못했습니다.')
+        if value.get('action') in ('reply_form','submit_reply'):
+            import 답변연결
+            return 답변연결.receive(e,key,target)
+        if value.get('action')!='open_codex':return response('지원하지 않는 요청입니다.')
         event_id=getattr(getattr(data,'header',None),'event_id',None) or getattr(e,'token',None) or str(int(time.time()/2))
         rid=str(uuid.uuid5(uuid.NAMESPACE_URL,str(event_id)+mid+target))
         now=time.time()
@@ -67,16 +71,18 @@ def stream():
     """같은 SSH 연결에서 클릭 요청과 수신 확인을 이어받는다."""
     import json
     import sys
+    import 답변연결
     connection=database()
+    답변연결.setup(connection)
     connection.isolation_level=None
     try:
         while True:
             pending=connection.execute(
-                "SELECT 1 FROM open_requests WHERE state='pending' LIMIT 1").fetchone()
+                "SELECT 1 FROM open_requests WHERE state='pending' UNION ALL SELECT 1 FROM reply_requests WHERE state IN ('pending','sending') LIMIT 1").fetchone()
             if not pending:
                 time.sleep(0.05)
                 continue
-            request=claim()
+            request=답변연결.claim() or claim()
             if not request:
                 continue
             sys.stdout.write(json.dumps(request)+'\n')
@@ -87,7 +93,8 @@ def stream():
             response=json.loads(line)
             if response.get('id')!=request['id'] or response.get('token')!=request['token']:
                 raise RuntimeError('대화 열기 수신 확인 불일치')
-            finish(response)
+            if request['kind']=='reply_thread':답변연결.finish(response)
+            else:finish(response)
     finally:
         connection.close()
 
