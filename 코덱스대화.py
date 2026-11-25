@@ -178,7 +178,9 @@ def tracked_input(mid, parent, root, body):
 
 def receive(ev):
     msg=ev.message
-    if msg.chat_id!=CHAT:return False
+    import 프로젝트방
+    project=프로젝트방.lookup(msg.chat_id) if msg.chat_id!=CHAT else None
+    if msg.chat_id!=CHAT and project is None:return False
     sender=getattr(getattr(ev.sender,'sender_id',None),'open_id','')
     if getattr(ev.sender,'sender_type','')!='user' or sender!=OWNER:return True
     mid=msg.message_id
@@ -202,7 +204,7 @@ def receive(ev):
     if not body:return True
     if len(body)>24000:
         reply(mid,'한 번에 처리할 본문이 너무 길어. 메일 하나씩 나눠 보내줘.','long:'+mid);return True
-    if body in REPORTS and not (getattr(msg,'parent_id',None) or getattr(msg,'root_id',None)):
+    if msg.chat_id==CHAT and body in REPORTS and not (getattr(msg,'parent_id',None) or getattr(msg,'root_id',None)):
         try:reply(mid,report(body),'daily:'+mid)
         except RuntimeError as e:
             if str(e) != '전송 확인 필요':raise
@@ -211,7 +213,7 @@ def receive(ev):
     if not (parent or root) and re.sub(r'[\s.!~ㅋㅎ]+','',body).lower() in ('굿','ㅇ','ㅇㅇ','ㅇㅋ','오케이','알겠어','알겠습니다','좋아','좋아요','감사','감사합니다','고마워','ok','네','넵'):
         return True
     resolve_request = re.fullmatch(r'해결 ([a-f0-9]{10})',body)
-    if resolve_request and not (parent or root):
+    if msg.chat_id==CHAT and resolve_request and not (parent or root):
         try:reply(mid,resolve(resolve_request[1]),'resolve:'+mid)
         except RuntimeError as e:
             if str(e) != '전송 확인 필요':raise
@@ -227,7 +229,7 @@ def receive(ev):
             except RuntimeError as e:
                 if str(e) != '전송 확인 필요':raise
             return True
-    tracked = tracked_input(mid,parent,root,body)
+    tracked = tracked_input(mid,parent,root,body) if msg.chat_id==CHAT else False
     if tracked is not False:
         if tracked:
             try:reply(mid,tracked,'ack:'+mid)
@@ -236,20 +238,20 @@ def receive(ev):
     with db() as c:
         c.execute('BEGIN IMMEDIATE')
         if c.execute('SELECT 1 FROM jobs WHERE mid=?',(mid,)).fetchone():return True
-        c.execute('INSERT OR IGNORE INTO rooms VALUES(?,NULL)',(CHAT,))
+        c.execute('INSERT OR IGNORE INTO rooms VALUES(?,NULL)',(msg.chat_id,))
         stop=body.strip() in ('중단','멈춰','작업 중단')
-        if stop:c.execute("UPDATE jobs SET status=CASE WHEN status='running' THEN 'cancel_requested' ELSE 'cancelled' END WHERE chat=? AND status IN ('pending','running') AND mid NOT IN (SELECT mid FROM tracked_turns)",(CHAT,))
-        c.execute('INSERT INTO jobs VALUES(?,?,?,?,?,NULL,?,NULL)',(mid,CHAT,body,'cancelled' if stop else 'pending',time.time(),time.time()))
+        if stop:c.execute("UPDATE jobs SET status=CASE WHEN status='running' THEN 'cancel_requested' ELSE 'cancelled' END WHERE chat=? AND status IN ('pending','running') AND mid NOT IN (SELECT mid FROM tracked_turns)",(msg.chat_id,))
+        c.execute('INSERT INTO jobs VALUES(?,?,?,?,?,NULL,?,NULL)',(mid,msg.chat_id,body,'cancelled' if stop else 'pending',time.time(),time.time()))
     try:reply(mid,'중단을 요청했습니다.' if stop else '접수했습니다. 라크 작업방에 연결된 코덱스에서 처리한 뒤 이 방에 알려드리겠습니다.','ack:'+mid)
     except Exception as e:print('접수 답장 오류',type(e).__name__,flush=True)
     return True
 
-def room_context(mid):
+def room_context(mid,chat=CHAT):
     """사람의 지시 때만 방 기록을 한 번 조회한다. 봇 알림도 자료로 읽는다."""
     from urllib.parse import urlencode
     import lark
     own_app=lark.설정읽기()['app_id']
-    query=urlencode({'container_id_type':'chat','container_id':CHAT,'sort_type':'ByCreateTimeDesc','page_size':50})
+    query=urlencode({'container_id_type':'chat','container_id':chat,'sort_type':'ByCreateTimeDesc','page_size':50})
     items=api('GET','/open-apis/im/v1/messages?'+query).get('items',[])
     current=next((i for i,x in enumerate(items) if x.get('message_id')==mid),None)
     if current is None:raise RuntimeError('현재 요청이 최근 기록 범위를 벗어나 맥락 확인 필요')
@@ -267,6 +269,9 @@ def room_context(mid):
 
 def rpc(r):
     action=r['action']
+    if action=='project_room_ensure':
+        import 프로젝트방
+        return 프로젝트방.ensure(r)
     if action=='open_finish':
         import 대화열기
         return 대화열기.finish(r)
@@ -303,7 +308,7 @@ def rpc(r):
             if c.execute('SELECT 1 FROM tracked_turns WHERE mid=?',(job['mid'],)).fetchone():
                 return {'files':[],'issues':[]}
             import 라크첨부,lark
-            return 라크첨부.prepare(room_context(job['mid']),lark.설정읽기(),STATE)
+            return 라크첨부.prepare(room_context(job['mid'],job['chat']),lark.설정읽기(),STATE)
         if action in ('heartbeat','finish'):
             c.execute('BEGIN IMMEDIATE')
             j=c.execute('SELECT * FROM jobs WHERE mid=? AND token=?',(r['mid'],r['token'])).fetchone()
@@ -336,8 +341,10 @@ def rpc(r):
             return {'tracked':[dict(x) for x in c.execute('SELECT title,status,session,current_mid FROM tracked_tasks ORDER BY updated DESC LIMIT 12')],'jobs':[dict(x) for x in c.execute('SELECT mid,status,updated FROM jobs ORDER BY created DESC LIMIT 10')],'rooms':[dict(x) for x in c.execute('SELECT * FROM rooms')]}
         elif action!='claim':raise ValueError('알 수 없는 요청')
     if action=='claim':
+        import 프로젝트방
+        j['project']=프로젝트방.lookup(j['chat'])
         if not tracked:
-            try:j['room_context']=room_context(j['mid'])
+            try:j['room_context']=room_context(j['mid'],j['chat'])
             except Exception as e:j['context_error']=str(e)
         return j
     import 라크파일전송
@@ -345,7 +352,7 @@ def rpc(r):
     if files:
         import lark
         try:
-            delivered=라크파일전송.deliver(r['mid'],files,db,api,lark.설정읽기(),STATE,CHAT)
+            delivered=라크파일전송.deliver(r['mid'],files,db,api,lark.설정읽기(),STATE,j['chat'])
             answer='요청한 파일 '+str(len(delivered))+'개를 이 방에 첨부했어.\n'+'\n'.join(x['name'] for x in delivered)
         except Exception as e:
             answer='파일은 준비했지만 이 방에 첨부하지 못했어. '+str(e)

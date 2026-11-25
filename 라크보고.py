@@ -231,7 +231,7 @@ def send_pending():
                     mid=row['message']
                 else:
                     result = room.api('POST','/open-apis/im/v1/messages?receive_id_type=chat_id',{
-                        'receive_id':room.CHAT,'msg_type':kind,
+                        'receive_id':__import__('프로젝트방').report_target(row['text'].splitlines()[0][1:-1]) if row['text'].startswith('[') else room.CHAT,'msg_type':kind,
                         'content':json.dumps(content,ensure_ascii=False),
                         'uuid':str(uuid.uuid5(uuid.NAMESPACE_URL,row['key']))})
                     mid = result['message_id']
